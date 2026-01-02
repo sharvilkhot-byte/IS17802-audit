@@ -20,8 +20,8 @@ const IdleOverlay: React.FC<IdleOverlayProps> = ({ onStart, title, subtitle, pri
 
             {/* Breathing Animation Circle */}
             <div className="relative w-32 h-32 mb-12 flex items-center justify-center">
-                <div className="absolute inset-0 bg-blue-100 rounded-full opacity-30 animate-ping-slow"></div>
-                <div className="absolute inset-4 bg-blue-50 rounded-full opacity-50 animate-pulse-slow"></div>
+                <div className="absolute inset-0 bg-tense rounded-full opacity-30 animate-ping-slow"></div>
+                <div className="absolute inset-4 bg-calm rounded-full opacity-50 animate-pulse-slow"></div>
                 <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center text-forest/50">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                         <path d="M12 3a9 9 0 0 0-9 9 9 9 0 0 0 9 9 9 9 0 0 0 9-9 9 9 0 0 0-9-9z" />

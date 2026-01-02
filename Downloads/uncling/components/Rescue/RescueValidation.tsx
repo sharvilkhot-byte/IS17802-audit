@@ -19,7 +19,7 @@ const RescueValidation: React.FC<RescueValidationProps> = ({ onNext }) => {
                     <p className="text-xl font-light text-textPrimary mb-2 leading-relaxed">
                         "It makes sense that you feel this way."
                     </p>
-                    <div className="w-12 h-1 bg-green-100 rounded-full mx-auto mt-4 mb-4" />
+                    <div className="w-12 h-1 bg-safe rounded-full mx-auto mt-4 mb-4" />
                     <p className="text-sm text-textSecondary">
                         Your feelings are real and valid.
                     </p>

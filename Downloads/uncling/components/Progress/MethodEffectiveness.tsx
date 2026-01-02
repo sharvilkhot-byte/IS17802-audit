@@ -24,7 +24,7 @@ const MethodEffectiveness: React.FC<MethodEffectivenessProps> = ({ data }) => {
                     </div>
                     <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                         <div
-                            className="h-full bg-blue-400 rounded-full transition-all duration-1000 ease-out group-hover:bg-blue-500"
+                            className="h-full bg-tense rounded-full transition-all duration-1000 ease-out group-hover:bg-calm0"
                             style={{ width: `${item.effectiveness}%` }}
                         />
                     </div>

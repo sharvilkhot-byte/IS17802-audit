@@ -71,7 +71,7 @@ const Pass5Readiness: React.FC<Props> = ({ data, update, onSubmit, onBack, isSub
 
                 <div className="space-y-6">
                     <div className="flex gap-4">
-                        <div className="w-2 h-2 rounded-full bg-green-500 mt-2 shrink-0" />
+                        <div className="w-2 h-2 rounded-full bg-safe0 mt-2 shrink-0" />
                         <div>
                             <h3 className="font-semibold text-textPrimary">I will speak when it helps</h3>
                             <p className="text-sm text-textSecondary">When you open the app, inside Rescue Now, or occasionally if a pattern repeats.</p>
@@ -79,7 +79,7 @@ const Pass5Readiness: React.FC<Props> = ({ data, update, onSubmit, onBack, isSub
                     </div>
 
                     <div className="flex gap-4">
-                        <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 shrink-0" />
+                        <div className="w-2 h-2 rounded-full bg-calm0 mt-2 shrink-0" />
                         <div>
                             <h3 className="font-semibold text-textPrimary">I won’t interrupt your life</h3>
                             <p className="text-sm text-textSecondary">No constant reminders. No pressure to respond. No guilt-based nudges.</p>

@@ -54,10 +54,10 @@ const RescueBreathing: React.FC<RescueBreathingProps> = ({ onComplete, durationS
         <div className="flex flex-col items-center justify-center h-full px-6 text-center animate-fade-in">
             <div className="relative w-64 h-64 flex items-center justify-center mb-12">
                 {/* Outer Glow */}
-                <div className={`absolute inset-0 bg-green-200 rounded-full blur-3xl transition-all duration-[4000ms] ${phase === 'inhale' ? 'opacity-40 scale-110' : 'opacity-20 scale-90'}`} />
+                <div className={`absolute inset-0 bg-safe rounded-full blur-3xl transition-all duration-[4000ms] ${phase === 'inhale' ? 'opacity-40 scale-110' : 'opacity-20 scale-90'}`} />
 
                 {/* Breathing Circle */}
-                <div className={`w-32 h-32 bg-green-500 rounded-full shadow-lg transition-transform duration-[4000ms] ease-in-out ${circleSize} flex items-center justify-center relative`}>
+                <div className={`w-32 h-32 bg-safe0 rounded-full shadow-lg transition-transform duration-[4000ms] ease-in-out ${circleSize} flex items-center justify-center relative`}>
                     <div className="absolute inset-0 bg-white rounded-full opacity-20 animate-pulse" />
                 </div>
             </div>

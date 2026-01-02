@@ -31,7 +31,7 @@ const NudgeToast: React.FC<NudgeToastProps> = ({ message, type, onDismiss, onAct
             `}
         >
             <div className="flex items-start gap-3">
-                <div className="mt-1 text-forest bg-blue-50 p-1.5 rounded-full">
+                <div className="mt-1 text-forest bg-calm p-1.5 rounded-full">
                     <Sparkles size={16} />
                 </div>
 
@@ -43,7 +43,7 @@ const NudgeToast: React.FC<NudgeToastProps> = ({ message, type, onDismiss, onAct
                     {onAction && (
                         <button
                             onClick={onAction}
-                            className="mt-2 text-xs font-medium text-forest hover:text-blue-600 transition-colors"
+                            className="mt-2 text-xs font-medium text-forest hover:text-forest transition-colors"
                         >
                             Explore this
                         </button>

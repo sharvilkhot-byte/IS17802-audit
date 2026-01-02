@@ -9,7 +9,7 @@ interface RescueExitProps {
 const RescueExit: React.FC<RescueExitProps> = ({ onFinish, onRepeat, onTalk }) => {
     return (
         <div className="flex flex-col items-center justify-center h-full px-6 text-center animate-fade-in">
-            <div className="w-16 h-16 bg-white border border-green-100 rounded-full flex items-center justify-center text-green-500 mb-6">
+            <div className="w-16 h-16 bg-white border border-safe rounded-full flex items-center justify-center text-moss mb-6">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </div>
 

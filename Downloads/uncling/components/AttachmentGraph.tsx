@@ -58,13 +58,13 @@ const AttachmentGraph: React.FC<AttachmentGraphProps> = ({ anxietyScore, avoidan
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[10px] sm:text-xs font-medium text-emerald-500 tracking-widest uppercase opacity-80">Emotional Stability</div>
 
             <div className="absolute left-2 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] sm:text-xs font-medium text-slate-400 tracking-widest uppercase opacity-80 origin-center">Comfort with Closeness</div>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-[10px] sm:text-xs font-medium text-blue-400 tracking-widest uppercase opacity-80 origin-center">Need for Autonomy</div>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-[10px] sm:text-xs font-medium text-forest tracking-widest uppercase opacity-80 origin-center">Need for Autonomy</div>
 
             {/* --- Quadrant Identifiers (Subtle) --- */}
             <div className="absolute top-[25%] left-[25%] -translate-x-1/2 -translate-y-1/2 text-orange-600/20 font-bold text-sm tracking-widest">GUARD</div>
             <div className="absolute top-[25%] right-[25%] translate-x-1/2 -translate-y-1/2 text-rose-600/20 font-bold text-sm tracking-widest">SENTINEL</div>
             <div className="absolute bottom-[25%] left-[25%] -translate-x-1/2 translate-y-1/2 text-emerald-600/20 font-bold text-sm tracking-widest">ANCHOR</div>
-            <div className="absolute bottom-[25%] right-[25%] translate-x-1/2 translate-y-1/2 text-blue-600/20 font-bold text-sm tracking-widest">SOLOIST</div>
+            <div className="absolute bottom-[25%] right-[25%] translate-x-1/2 translate-y-1/2 text-forest/20 font-bold text-sm tracking-widest">SOLOIST</div>
 
             {/* --- The "You" Marker (Breathing Organism) --- */}
             <div

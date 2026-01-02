@@ -24,7 +24,7 @@ const RecoveryGraph: React.FC<RecoveryMetrics> = ({ averageTimeMinutes, improvem
             <div className="text-center">
                 <p className="text-xs text-textSecondary uppercase tracking-wider mb-1">Trend</p>
                 <div className="flex items-center justify-center gap-1">
-                    <span className="text-2xl font-light text-green-500">
+                    <span className="text-2xl font-light text-moss">
                         {improvementPercent > 0 ? '↓' : '↑'} {Math.abs(improvementPercent)}%
                     </span>
                     <span className="text-xs text-slate-400">faster</span>

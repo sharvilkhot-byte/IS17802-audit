@@ -16,7 +16,7 @@ const RescueIntensity: React.FC<RescueIntensityProps> = ({ onSelect }) => {
             <div className="w-full max-w-sm space-y-4">
                 <button
                     onClick={() => onSelect('mild')}
-                    className="w-full p-4 bg-white hover:bg-blue-50/50 border border-slate-100 rounded-2xl text-left transition-all active:scale-98 group"
+                    className="w-full p-4 bg-white hover:bg-calm/50 border border-slate-100 rounded-2xl text-left transition-all active:scale-98 group"
                 >
                     <span className="block text-lg font-medium text-textPrimary group-hover:text-forest mb-1">Unsettled</span>
                     <span className="block text-sm text-textSecondary">I feel a little uneasy or restless.</span>
