@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Uncling</title>
+  <link rel="icon" href="https://i.ibb.co/wZh3tzCj/uncling.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#4A6C8C">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* Base styles for responsiveness and scrolling */
+    html,
+    body,
+    #root {
+      height: 100%;
+      width: 100%;
+    }
+
+    body {
+      overscroll-behavior-y: none;
+      /* Prevents bounce effects */
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #root {
+      display: flex;
+      flex-direction: column;
+      isolation: isolate;
+      /* New stacking context */
+    }
+
+    .scroll-touch {
+      -webkit-overflow-scrolling: touch;
+    }
+  </style>
+
+</head>
+
+<body class="bg-slate-50 text-slate-800 antialiased font-sans">
+  <div id="root">
+    <!-- Static Splash Screen for immediate feedback on PWA launch -->
+    <style>
+      .static-splash-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        background-color: #F9F9F7;
+        color: #3D4047;
+        font-family: 'Poppins', sans-serif;
+      }
+
+      .static-splash-container img {
+        height: 5rem;
+        /* h-20 */
+        width: auto;
+        margin-bottom: 1rem;
+        /* mb-4 */
+      }
+
+      .static-splash-container p {
+        font-size: 1.125rem;
+        /* text-lg */
+        margin-top: 0.5rem;
+        /* mt-2 */
+      }
+    </style>
+    <div class="static-splash-container">
+      <img src="https://i.ibb.co/wZh3tzCj/uncling.png" alt="Uncling Logo" />
+      <p>Find your calm within.</p>
+    </div>
+  </div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>

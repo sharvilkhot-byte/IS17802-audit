@@ -1,0 +1,21 @@
+{
+  "short_name": "Uncling",
+  "name": "Uncling",
+  "description": "An emotional wellness application designed to help users understand their attachment styles and cultivate self-awareness.",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/wZh3tzCj/uncling.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://i.ibb.co/wZh3tzCj/uncling.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#4A6C8C",
+  "background_color": "#F9F9F7"
+}
