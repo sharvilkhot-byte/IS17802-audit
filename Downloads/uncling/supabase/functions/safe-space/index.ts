@@ -5,7 +5,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { ai } from "../_shared/ai.ts";
 import { GLOBAL_CHARTER_PROMPT, SAFE_SPACE_PROMPT } from "../_shared/prompts.ts";
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -35,21 +35,20 @@ serve(async (req) => {
     const systemInstruction = `${GLOBAL_CHARTER_PROMPT}\n\n${SAFE_SPACE_PROMPT}`;
     const userMessage = note ? `I am feeling overwhelmed. Intensity: ${intensity}. Note: ${note}` : `I am feeling overwhelmed. Intensity: ${intensity}.`;
 
-    const response = await ai.models.generateContent({
+    const model = ai.getGenerativeModel({
       model: "gemini-1.5-flash",
-      contents: [
-        { role: "system", parts: [{ text: systemInstruction }] },
-        { role: "user", parts: [{ text: userMessage }] },
-      ],
+      systemInstruction: systemInstruction
     });
 
-    const message = response.text ? response.text() : "Breathe. I am here.";
+    const result = await model.generateContent(userMessage);
+    const response = await result.response;
+    const message = response.text() || "Breathe. I am here.";
 
     return new Response(
       JSON.stringify({ message }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
+  } catch (error: any) {
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

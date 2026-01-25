@@ -14,7 +14,16 @@ export enum QuestionAxis {
     Trait = 'Trait'
 }
 
-export type ChatMode = 'standard' | 'deep' | 'rescue' | 'review';
+export type ChatMode = 'standard' | 'deep' | 'rescue' | 'review' | 'scripting' | 'reframing';
+
+export interface EvidenceLog {
+    id: string;
+    user_id: string;
+    negative_belief: string;
+    counter_evidence: string;
+    coherence_score: number;
+    created_at: string;
+}
 
 export enum RelationshipStatus {
     Single = 'Single',
@@ -61,6 +70,16 @@ export interface CheckIn {
     prompt?: string;
     note?: string;
     ai_feedback: string;
+    created_at: string;
+}
+
+export type InternalState = 'Secure' | 'Anxious' | 'Avoidant';
+
+export interface DailyCheckIn {
+    id: string;
+    user_id: string;
+    state: InternalState;
+    note?: string;
     created_at: string;
 }
 
@@ -139,16 +158,29 @@ export interface UserContextProfile {
 
 export interface ReflectionState {
     emotionalPatterns: string[];
+    intensity: string;
+    timingContext: string[];
+    pass1Feeling: string;
+
     firstImpulse: string;
+    worseningFactors: string[];
+    regulationDirection: string;
+    aftermathPattern: string;
+    pass2Feeling: string;
+
     closenessSignal: string;
     distanceInterpretation: string;
     needsExpression: string;
-    intensity: string;
-    timingContext: string;
-    regulationDirection: string;
+    conflictSafety: string;
+    pass3Feeling: string;
+
+    innerVoice: string;
     copingTools: string[];
-    worseningFactors: string[];
-    aftermathPattern: string;
+    recoverySpeed: string;
+    capacityNeeds: string;
+
+    challengeConsent: string;
+    pass5Feeling: string;
 }
 
 export interface ResultContent {
@@ -157,4 +189,35 @@ export interface ResultContent {
     supportMechanisms: string[];
     stuckPoints: string[];
     educationSnippet: string;
+}
+
+export interface AuditInput {
+    type: 'url' | 'upload';
+    url?: string;
+    filesData?: string[]; // Array of base64 strings
+    fileData?: string;    // Fallback for single file base64
+}
+
+export interface Screenshot {
+    path?: string;
+    data: string; // base64 string
+    isMobile: boolean;
+    mimeType?: string;
+}
+
+export interface StreamChunk {
+    type: 'data' | 'error';
+    payload: any;
+    message?: string;
+}
+
+export type ExpertKey =
+    | 'Strategy Audit expert'
+    | 'UX Audit expert'
+    | 'Product Audit expert'
+    | 'Visual Audit expert';
+
+export interface AnalysisReport {
+    [key: string]: any;
+    screenshots?: { url: string }[];
 }

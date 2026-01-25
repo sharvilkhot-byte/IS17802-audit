@@ -10,23 +10,29 @@ const RescueBreathing: React.FC<RescueBreathingProps> = ({ onComplete, durationS
     const [secondsLeft, setSecondsLeft] = useState(durationSeconds);
     const [instruction, setInstruction] = useState('Breathe in slowly...');
 
-    // Phase Timer
+    // Phase Timer (4-7-8 Pattern)
     useEffect(() => {
         const cycle = () => {
             setPhase('inhale');
-            setInstruction('Breathe in...');
+            setInstruction('Inhale deeply through nose...');
+
+            // Inhale 4s
             setTimeout(() => {
                 setPhase('hold');
-                setInstruction('Hold gently...');
+                setInstruction('Hold breath...');
+
+                // Hold 7s
                 setTimeout(() => {
                     setPhase('exhale');
-                    setInstruction('Breathe out slowly...');
-                }, 4000); // Hold for 4s
-            }, 4000); // Inhale for 4s
+                    setInstruction('Whoosh exhale through mouth...');
+
+                    // Exhale 8s - Cycle restarts after total 19s
+                }, 7000);
+            }, 4000);
         };
 
         cycle(); // Initial
-        const interval = setInterval(cycle, 12000); // Total 12s cycle (4+4+4)
+        const interval = setInterval(cycle, 19000); // Total 19s cycle (4+7+8)
 
         return () => clearInterval(interval);
     }, []);
@@ -34,30 +40,32 @@ const RescueBreathing: React.FC<RescueBreathingProps> = ({ onComplete, durationS
     // Countdown Timer
     useEffect(() => {
         const timer = setInterval(() => {
-            setSecondsLeft(prev => {
-                if (prev <= 1) {
-                    clearInterval(timer);
-                    onComplete();
-                    return 0;
-                }
-                return prev - 1;
-            });
+            setSecondsLeft(prev => prev > 0 ? prev - 1 : 0);
         }, 1000);
         return () => clearInterval(timer);
-    }, [onComplete]);
+    }, []);
 
-    // Dynamic sizes based on phase
-    const circleSize = phase === 'inhale' ? 'scale-150' : phase === 'hold' ? 'scale-150' : 'scale-100';
-    const opacity = phase === 'inhale' ? 'opacity-30' : 'opacity-80';
+    // Handle Completion
+    useEffect(() => {
+        if (secondsLeft === 0) {
+            onComplete();
+        }
+    }, [secondsLeft, onComplete]);
+
+
 
     return (
         <div className="flex flex-col items-center justify-center h-full px-6 text-center animate-fade-in">
             <div className="relative w-64 h-64 flex items-center justify-center mb-12">
                 {/* Outer Glow */}
-                <div className={`absolute inset-0 bg-safe rounded-full blur-3xl transition-all duration-[4000ms] ${phase === 'inhale' ? 'opacity-40 scale-110' : 'opacity-20 scale-90'}`} />
+                <div
+                    className={`absolute inset-0 bg-safe rounded-full blur-3xl transition-all ease-in-out ${phase === 'inhale' ? 'opacity-40 scale-110 duration-[4000ms]' : phase === 'hold' ? 'opacity-40 scale-110 duration-[0ms]' : 'opacity-20 scale-90 duration-[8000ms]'}`}
+                />
 
                 {/* Breathing Circle */}
-                <div className={`w-32 h-32 bg-safe0 rounded-full shadow-lg transition-transform duration-[4000ms] ease-in-out ${circleSize} flex items-center justify-center relative`}>
+                <div
+                    className={`w-32 h-32 bg-safe0 rounded-full shadow-lg transition-transform ease-in-out flex items-center justify-center relative ${phase === 'inhale' ? 'scale-150 duration-[4000ms]' : phase === 'hold' ? 'scale-150 duration-[0ms]' : 'scale-100 duration-[8000ms]'}`}
+                >
                     <div className="absolute inset-0 bg-white rounded-full opacity-20 animate-pulse" />
                 </div>
             </div>

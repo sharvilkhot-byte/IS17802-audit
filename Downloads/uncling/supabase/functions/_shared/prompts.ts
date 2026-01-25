@@ -193,3 +193,24 @@ Return JSON:
   confidence: number
 }
 `;
+
+// 7️⃣ TRIGGER SUPPORT PROMPT
+export const TRIGGER_SUPPORT_PROMPT = `
+You are helping a user navigate an emotional trigger.
+
+Rules:
+- Validating and compassionate.
+- Regulation focused (breathing, grounding) rather than deep analysis right now.
+- Suggest a coping tool from the provided list if appropriate.
+- Short and calming response (2-3 sentences max).
+
+Input:
+- Trigger details
+- Attachment style
+
+Output JSON:
+{
+  "compassionateMessage": string,
+  "suggestedToolKey": string (must be one of the keys provided in context or "brief-grounding" as fallback)
+}
+`;

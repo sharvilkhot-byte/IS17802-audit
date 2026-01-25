@@ -1,30 +1,41 @@
-
-
 import React, { useContext, Suspense, lazy, useEffect } from 'react';
-// Fix: Changed react-router-dom import to a namespace import to resolve module resolution issues.
 import * as ReactRouterDOM from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { SettingsProvider } from './context/SettingsContext';
-import SplashScreen from './pages/SplashScreen';
+import { GardenProvider } from './context/GardenContext';
 import { identifyUser, resetUser } from './services/analytics';
 
 // Lazy-loaded page components
-const SplashScreenSecondary = lazy(() => import('./pages/SplashScreenSecondary'));
+const TheVoid = lazy(() => import('./pages/TheVoid'));
+const OnboardingScreen = lazy(() => import('./pages/OnboardingScreen')); // NEW FLOW
+const OnboardingResult = lazy(() => import('./pages/OnboardingResult')); // NEW RESULT SCREEN
 const AuthScreen = lazy(() => import('./pages/AuthScreen'));
-const GuidedReflection = lazy(() => import('./pages/GuidedReflection'));
-const GuidedResult = lazy(() => import('./pages/GuidedResult'));
+
 const DashboardScreen = lazy(() => import('./pages/DashboardScreen'));
 const SecureSelfChat = lazy(() => import('./pages/SecureSelfChat'));
 const RescueMeNow = lazy(() => import('./pages/RescueMeNow'));
-const PatternScreen = lazy(() => import('./pages/PatternScreen'));
-const SettingsScreen = lazy(() => import('./pages/SettingsScreen'));
+const ReportView = lazy(() => import('./components/Analytics/ReportView')); // Phase 4
 
-const JourneyScreen = lazy(() => import('./pages/JourneyScreen'));
+// Pillar Hub Pages
+const RegulateHub = lazy(() => import('./pages/RegulateHub'));
+const CoachHub = lazy(() => import('./pages/CoachHub'));
+const TrackerHub = lazy(() => import('./pages/TrackerHub'));
+
+// Feature Pages
+const FeelingsCompass = lazy(() => import('./pages/FeelingsCompass'));
+const AndJournal = lazy(() => import('./pages/AndJournal'));
+const EvidenceLogList = lazy(() => import('./pages/EvidenceLogList'));
+const RepairScripts = lazy(() => import('./pages/RepairScripts'));
+const PartsCheckIn = lazy(() => import('./pages/PartsCheckIn'));
+const SecurityStreaks = lazy(() => import('./pages/SecurityStreaks'));
+
+
+
 
 
 const LoadingSpinner: React.FC = () => (
-    <div className="flex items-center justify-center h-full bg-background">
-        <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-forest"></div>
+    <div className="flex items-center justify-center h-full bg-slate-50">
+        <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-brand-lavender"></div>
     </div>
 );
 
@@ -45,7 +56,7 @@ const ProtectedRoute: React.FC = () => {
     const isOnboardingFlow = location.pathname.startsWith('/onboarding');
 
     if (needsOnboarding && !isOnboardingFlow) {
-        // User needs to onboard. Redirect to the start of Guided Reflection.
+        // User needs to onboard. Redirect to the start of the New Flow.
         return <ReactRouterDOM.Navigate to="/onboarding" replace />;
     }
 
@@ -68,18 +79,35 @@ const AppRoutes: React.FC = () => {
         <ReactRouterDOM.HashRouter>
             <Suspense fallback={<LoadingSpinner />}>
                 <ReactRouterDOM.Routes>
-                    <ReactRouterDOM.Route path="/" element={<SplashScreen />} />
-                    <ReactRouterDOM.Route path="/welcome" element={<SplashScreenSecondary />} />
+                    {/* Unclinq 3.0 Flow */}
+                    <ReactRouterDOM.Route path="/" element={<TheVoid />} />
+
+                    {/* NEW DYNAMIC ONBOARDING FLOW */}
+                    {/* NEW DYNAMIC ONBOARDING FLOW */}
+                    <ReactRouterDOM.Route path="/onboarding" element={<OnboardingScreen />} />
+                    <ReactRouterDOM.Route path="/onboarding/result" element={<OnboardingResult />} />
                     <ReactRouterDOM.Route path="/auth" element={<AuthScreen />} />
+
+
                     <ReactRouterDOM.Route element={<ProtectedRoute />}>
-                        <ReactRouterDOM.Route path="/onboarding" element={<GuidedReflection />} />
-                        <ReactRouterDOM.Route path="/onboarding/result" element={<GuidedResult />} />
+                        {/* <ReactRouterDOM.Route path="/onboarding" element={<GuidedReflection />} />  REMOVED OLD FLOW */}
                         <ReactRouterDOM.Route path="/dashboard" element={<DashboardScreen />} />
-                        <ReactRouterDOM.Route path="/journey" element={<JourneyScreen />} />
+
+                        {/* Pillar Hub Pages */}
+                        <ReactRouterDOM.Route path="/regulate" element={<RegulateHub />} />
+                        <ReactRouterDOM.Route path="/coach" element={<CoachHub />} />
+                        <ReactRouterDOM.Route path="/tracker" element={<TrackerHub />} />
                         <ReactRouterDOM.Route path="/chat/:sessionId?" element={<SecureSelfChat />} />
                         <ReactRouterDOM.Route path="/rescue" element={<RescueMeNow />} />
-                        <ReactRouterDOM.Route path="/progress" element={<PatternScreen />} />
-                        <ReactRouterDOM.Route path="/settings" element={<SettingsScreen />} />
+                        <ReactRouterDOM.Route path="/report" element={<ReportView />} />
+
+                        {/* Feature Pages */}
+                        <ReactRouterDOM.Route path="/feelings" element={<FeelingsCompass />} />
+                        <ReactRouterDOM.Route path="/journal" element={<AndJournal />} />
+                        <ReactRouterDOM.Route path="/evidence-log" element={<EvidenceLogList />} />
+                        <ReactRouterDOM.Route path="/scripts" element={<RepairScripts />} />
+                        <ReactRouterDOM.Route path="/parts-checkin" element={<PartsCheckIn />} />
+                        <ReactRouterDOM.Route path="/streaks" element={<SecurityStreaks />} />
                     </ReactRouterDOM.Route>
                 </ReactRouterDOM.Routes>
             </Suspense>
@@ -92,7 +120,9 @@ const App: React.FC = () => {
     return (
         <AuthProvider>
             <SettingsProvider>
-                <AppRoutes />
+                <GardenProvider>
+                    <AppRoutes />
+                </GardenProvider>
             </SettingsProvider>
         </AuthProvider>
     );

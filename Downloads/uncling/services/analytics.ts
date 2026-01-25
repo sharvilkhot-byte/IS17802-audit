@@ -1,54 +1,87 @@
-import posthog from 'posthog-js';
-import { User } from '../types';
+import { supabase } from './supabase';
+import { InternalState } from '../types';
 
-// In a real app, these would come from environment variables.
-// Replace with your actual PostHog Project API Key and instance address.
-const POSTHOG_KEY = 'phc_1aMrOOjkKcn0W3l1MZIDoqULerpvY4iijIp46XsqEwr';
-const POSTHOG_HOST = 'https://app.posthog.com';
-
-const isAnalyticsEnabled = !!(POSTHOG_KEY && POSTHOG_HOST);
-
-if (isAnalyticsEnabled && typeof window !== 'undefined') {
-  posthog.init(POSTHOG_KEY, {
-    api_host: POSTHOG_HOST,
-    // Enable autocapture to automatically track page views and clicks.
-    autocapture: true, 
-    // Disable session recording for privacy reasons, as it can capture sensitive info.
-    session_recording: {
-        disabled: true
-    }
-  });
+interface Stats {
+  totalCheckIns: number;
+  patterns: {
+    Secure: number;
+    Anxious: number;
+    Avoidant: number;
+  };
+  truthBankBalance: number;
+  streakDays: number;
+  rescueCount: number;
+  chatSessionCount: number;
 }
 
-/**
- * Identifies the current user in PostHog.
- * @param user The authenticated user object from Supabase.
- */
-export const identifyUser = (user: User) => {
-  if (!isAnalyticsEnabled) return;
-  
-  // We only send non-PII data. The user ID from Supabase is a great unique identifier.
-  // We also send the attachment style as a user property to segment users.
-  posthog.identify(user.id, {
-    attachment_style: user.attachment_style,
-    preferred_name_set: !!user.preferred_name
+export const get15DayStats = async (userId: string): Promise<Stats> => {
+  // 1. Fetch Check-ins (Last 15 days)
+  // Parallelize requests for performance
+  const [
+    { data: checkIns },
+    { count: evidenceCount },
+    { count: rescueCount },
+    { count: chatCount }
+  ] = await Promise.all([
+    // 1. Fetch Check-ins (Last 15 days)
+    supabase
+      .from('daily_check_ins')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('created_at', new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()),
+
+    // 2. Fetch Evidence Logs (Total)
+    supabase
+      .from('evidence_logs')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId),
+
+    // 3. Fetch Rescue Sessions (Last 15 days)
+    supabase
+      .from('rescue_sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('created_at', new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()),
+
+    // 4. Fetch Chat Sessions (Total)
+    supabase
+      .from('chat_sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+  ]);
+
+  // 3. Process Patterns
+  const patterns = {
+    Secure: 0,
+    Anxious: 0,
+    Avoidant: 0
+  };
+
+  checkIns?.forEach((c: { state: InternalState }) => {
+    const s = c.state as keyof typeof patterns;
+    if (patterns[s] !== undefined) {
+      patterns[s]++;
+    }
   });
+
+  // 4. Calculate Streak (MVP: Simple unique days count for last 15 days)
+  const uniqueDays = new Set(checkIns?.map((c: any) => c.created_at.split('T')[0])).size;
+
+  return {
+    totalCheckIns: checkIns?.length || 0,
+    patterns,
+    truthBankBalance: evidenceCount || 0,
+    streakDays: uniqueDays,
+    rescueCount: rescueCount || 0,
+    chatSessionCount: chatCount || 0
+  };
 };
 
-/**
- * Clears the identified user on logout.
- */
+// Legacy/Placeholder functions to prevent App.tsx breakage
+export const identifyUser = (user: any) => {
+  // console.log("Identify", user.id);
+};
+
 export const resetUser = () => {
-  if (!isAnalyticsEnabled) return;
-  posthog.reset();
-};
-
-/**
- * Tracks a custom event in PostHog.
- * @param eventName The name of the event to track.
- * @param properties Optional properties to send with the event.
- */
-export const trackEvent = (eventName: string, properties?: Record<string, any>) => {
-  if (!isAnalyticsEnabled) return;
-  posthog.capture(eventName, properties);
+  // console.log("Reset user");
 };

@@ -2,6 +2,7 @@ export type SafeSpaceStep =
     | 'entry'
     | 'intensity'
     | 'breathing'
+    | 'grounding'
     | 'body'
     | 'validation'
     | 'loop'
@@ -40,6 +41,14 @@ export const SAFE_SPACE_CONTENT: Record<SafeSpaceStep, SafeSpaceContent> = {
         primaryAction: "Follow guided breath",
         secondaryAction: "Skip to next grounding",
         microCopy: "Even a few breaths help."
+    },
+    grounding: {
+        step: 'grounding',
+        headline: "Let's anchor in the present.",
+        body: "Look around. Find things you can see, touch, and hear. Connect to the physical world.",
+        primaryAction: "Start 5-4-3-2-1",
+        secondaryAction: "Skip to body check",
+        microCopy: "Use your senses to find safety."
     },
     body: {
         step: 'body',

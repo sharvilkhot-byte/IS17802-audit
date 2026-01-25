@@ -1,64 +1,41 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Nunito:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --font-primary: 'Inter', system-ui, sans-serif;
-  --font-emotional: 'Nunito', 'Inter', sans-serif;
+  --font-primary: 'Quicksand', system-ui, sans-serif;
+  --font-heading: 'Quicksand', sans-serif;
 }
 
 body {
   font-family: var(--font-primary);
-  background-color: #FAFBF9;
-  /* background color from tokens */
-  color: #1E2A23;
-  /* textPrimary color from tokens */
+  background-color: #FAF8FF;
+  /* Brand Light */
+  color: #5B4E8B;
+  /* Brand Deep */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Animation Utilities (Standard CSS) */
-.animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
+/* Custom Utilities */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
-.animate-fade-in-up {
-  animation: fadeInUp 0.5s ease-out forwards;
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
 }
 
-.animate-slide-up {
-  animation: slideUp 0.4s ease-out forwards;
+.custom-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.animate-pulse-slow {
-  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.custom-scroll::-webkit-scrollbar-thumb {
+  background-color: #E8C5D8;
+  /* Brand Rose */
+  border-radius: 20px;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(100%);
-  }
-
-  to {
-    transform: translateY(0);
-  }
-}
+/* Animations included in Tailwind config */

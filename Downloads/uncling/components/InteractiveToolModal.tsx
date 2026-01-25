@@ -3,8 +3,8 @@ import { CopingTool } from '../data/copingTools';
 import Button from './Button';
 
 interface InteractiveToolModalProps {
-  tool: CopingTool;
-  onClose: () => void;
+    tool: CopingTool;
+    onClose: () => void;
 }
 
 const InteractiveToolModal: React.FC<InteractiveToolModalProps> = ({ tool, onClose }) => {
@@ -53,7 +53,7 @@ const InteractiveToolModal: React.FC<InteractiveToolModalProps> = ({ tool, onClo
             <Button onClick={handleNext} className="w-full sm:w-auto">Start Exercise</Button>
         </div>
     );
-    
+
     const renderCompletion = () => (
         <div className="text-center">
             <h2 className="text-2xl md:text-3xl font-bold text-textPrimary mb-4">Well done!</h2>
@@ -66,7 +66,7 @@ const InteractiveToolModal: React.FC<InteractiveToolModalProps> = ({ tool, onClo
         if (step > totalSteps) return renderCompletion();
         const instruction = tool.instructions[step - 1];
         return (
-             <div className="text-center">
+            <div className="text-center">
                 <p className="text-sm font-medium text-forest mb-4">Step {step} of {totalSteps}</p>
                 <p className="text-xl md:text-2xl text-textPrimary min-h-[10rem] flex items-center justify-center">{instruction}</p>
             </div>
@@ -81,7 +81,7 @@ const InteractiveToolModal: React.FC<InteractiveToolModalProps> = ({ tool, onClo
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex flex-col">
                         <label className="font-semibold text-textPrimary mb-2 text-center">Facts</label>
-                         <textarea
+                        <textarea
                             value={factText}
                             onChange={(e) => setFactText(e.target.value)}
                             placeholder="Objective, verifiable evidence..."
@@ -101,11 +101,11 @@ const InteractiveToolModal: React.FC<InteractiveToolModalProps> = ({ tool, onClo
             </div>
         )
     };
-    
+
     // Special case for Brain Dump
     const renderBrainDump = () => {
         if (step > 1) return renderCompletion();
-         return (
+        return (
             <div>
                 <p className="text-center text-textPrimary/90 mb-4">{tool.instructions[0]}</p>
                 <textarea
@@ -115,7 +115,7 @@ const InteractiveToolModal: React.FC<InteractiveToolModalProps> = ({ tool, onClo
                     className="w-full h-64 sm:h-80 p-3 bg-white rounded-xl border border-moss/50 focus:ring-2 focus:ring-forest outline-none transition-shadow"
                 />
             </div>
-         )
+        )
     }
 
     const renderContent = () => {
@@ -130,8 +130,8 @@ const InteractiveToolModal: React.FC<InteractiveToolModalProps> = ({ tool, onClo
             <div className="bg-background p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col min-h-[60vh] max-h-[90vh]">
                 <div className="flex justify-end mb-4">
                     <button onClick={onClose} className="text-textPrimary hover:text-forest" aria-label="Close exercise">
-                        {/* Fix: Corrected SVG attribute casing from strokeLinecap/strokeLinejoin to strokeLineCap/strokeLineJoin. */}
-                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLineCap="round" strokeLineJoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        {/* Fix: Corrected SVG attribute casing from strokeLinecap/strokeLinejoin to strokeLinecap/strokeLinejoin. */}
+                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 </div>
 
@@ -143,9 +143,9 @@ const InteractiveToolModal: React.FC<InteractiveToolModalProps> = ({ tool, onClo
                     {step > 0 && step <= totalSteps && tool.type === 'guided-steps' ? (
                         <Button variant="secondary" onClick={handleBack} disabled={step === 1}>Back</Button>
                     ) : <div></div>}
-                    
+
                     {step > 0 && step <= totalSteps && tool.type === 'guided-steps' ? (
-                         <Button onClick={handleNext}>{isLastStep ? 'Finish' : 'Next'}</Button>
+                        <Button onClick={handleNext}>{isLastStep ? 'Finish' : 'Next'}</Button>
                     ) : null}
 
                     {step > 0 && (tool.type === 'fact-vs-feeling' || tool.key === 'brain-dump') && step <= 1 ? (

@@ -6,7 +6,7 @@ import { ai } from "../_shared/ai.ts";
 import { detectActivation } from "../_shared/detectors.ts";
 import { GLOBAL_CHARTER_PROMPT, SECURE_CHAT_PROMPT } from "../_shared/prompts.ts";
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -38,15 +38,14 @@ serve(async (req) => {
     // 4. Generate AI Response
     const systemInstruction = `${GLOBAL_CHARTER_PROMPT}\n\n${SECURE_CHAT_PROMPT}`;
 
-    const response = await ai.models.generateContent({
+    const model = ai.getGenerativeModel({
       model: "gemini-1.5-flash",
-      contents: [
-        { role: "system", parts: [{ text: systemInstruction }] },
-        { role: "user", parts: [{ text: message }] },
-      ],
+      systemInstruction: systemInstruction
     });
 
-    const reply = response.text ? response.text() : "I'm listening.";
+    const result = await model.generateContent(message);
+    const response = await result.response;
+    const reply = response.text() || "I'm listening.";
 
     // 5. Store AI Reply
     await supabase.from("chat_messages").insert({
@@ -59,9 +58,20 @@ serve(async (req) => {
     return new Response(JSON.stringify({ reply }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error) {
-    console.error(error);
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: any) {
+    console.error("Critical Error in chat-secure:", error);
+
+    // Check for specific known issues
+    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!apiKey) {
+      console.error("GEMINI_API_KEY is missing!");
+    }
+
+    return new Response(JSON.stringify({
+      error: error.message,
+      stack: error.stack,
+      details: "Check Supabase logs for more info."
+    }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

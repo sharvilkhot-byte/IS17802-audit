@@ -29,7 +29,7 @@ const ActionReflectionModal: React.FC<ActionReflectionModalProps> = ({ actionTit
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in" aria-modal="true" role="dialog">
       <Card className="w-full max-w-md relative">
         <button onClick={onClose} className="absolute top-4 right-4 text-textSecondary hover:text-textPrimary">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLineCap="round" strokeLineJoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
 
         <h3 className="text-lg font-bold text-textPrimary mb-2 pr-6">{actionTitle}</h3>
@@ -38,14 +38,14 @@ const ActionReflectionModal: React.FC<ActionReflectionModalProps> = ({ actionTit
           <div className="py-4">
             <p className="text-textSecondary mb-6">Did you get a chance to practice this today?</p>
             <div className="grid grid-cols-2 gap-4">
-              <button 
+              <button
                 onClick={() => handleInitialChoice('completed')}
                 className="flex flex-col items-center justify-center p-4 border-2 border-moss/30 rounded-xl hover:bg-moss/10 hover:border-moss transition-all"
               >
                 <span className="text-2xl mb-2">🌿</span>
                 <span className="font-semibold text-forest">Yes, I did</span>
               </button>
-              <button 
+              <button
                 onClick={() => handleInitialChoice('skipped')}
                 className="flex flex-col items-center justify-center p-4 border-2 border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all"
               >
@@ -57,8 +57,8 @@ const ActionReflectionModal: React.FC<ActionReflectionModalProps> = ({ actionTit
         ) : (
           <div className="py-2">
             <p className="text-textPrimary font-medium mb-3">
-              {status === 'completed' 
-                ? "That's great. How did it make you feel?" 
+              {status === 'completed'
+                ? "That's great. How did it make you feel?"
                 : "That's completely okay. What felt difficult about it?"}
             </p>
             <textarea
@@ -69,10 +69,10 @@ const ActionReflectionModal: React.FC<ActionReflectionModalProps> = ({ actionTit
               autoFocus
             />
             <div className="flex justify-end gap-3">
-                <button onClick={() => setStep('initial')} className="text-textSecondary text-sm font-medium hover:underline">Back</button>
-                <Button onClick={handleSave} disabled={!note.trim()} className="!py-2 !px-6">
-                    Save Reflection
-                </Button>
+              <button onClick={() => setStep('initial')} className="text-textSecondary text-sm font-medium hover:underline">Back</button>
+              <Button onClick={handleSave} disabled={!note.trim()} className="!py-2 !px-6">
+                Save Reflection
+              </Button>
             </div>
           </div>
         )}

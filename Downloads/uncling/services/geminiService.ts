@@ -1,71 +1,35 @@
-
 import { supabase } from './supabase';
-import { AttachmentStyle } from "../types";
 
+const FUNCTION_URL_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/functions/v1` : 'http://localhost:54321/functions/v1';
 
+export const analyzeOnboarding = async (userId: string, data: any) => {
+    const { data: result, error } = await supabase.functions.invoke('onboarding-analyze', {
+        body: { user_id: userId, scores: data }
+    });
 
-/**
- * Secure Chat (AI)
- * Calls 'chat-secure' Edge Function.
- * Note: Currently non-streaming (Unary).
- */
-export const sendSecureChatMessage = async (
-    userId: string,
-    sessionId: string,
-    message: string
-): Promise<string> => {
-    try {
-        const { data, error } = await supabase.functions.invoke('chat-secure', {
-            body: { user_id: userId, session_id: sessionId, message }
-        });
-
-        if (error) throw error;
-        return data.reply;
-    } catch (error) {
-        console.error("Secure Chat Error:", error);
-        return "I am listening, but I'm having trouble connecting right now.";
-    }
+    if (error) throw error;
+    return result;
 };
 
-/**
- * Safe Space (Rescue)
- * Calls 'safe-space' Edge Function.
- */
-export const enterSafeSpace = async (
-    userId: string,
-    intensity: number,
-    note?: string
-): Promise<string> => {
-    try {
-        const { data, error } = await supabase.functions.invoke('safe-space', {
-            body: { user_id: userId, intensity, note }
-        });
+export const sendSecureChatMessage = async (userId: string, sessionId: string, message: string) => {
+    const { data: result, error } = await supabase.functions.invoke('chat-secure', {
+        body: { user_id: userId, session_id: sessionId, message }
+    });
 
-        if (error) throw error;
-        return data.message;
-    } catch (error) {
-        console.error("Safe Space Error:", error);
-        return "Breathe. I am here with you.";
-    }
+    if (error) throw error;
+    return result.reply;
 };
 
-/**
- * Onboarding Analysis
- * Calls 'onboarding-analyze' Edge Function.
- */
-export const analyzeOnboarding = async (
-    userId: string,
-    scores: { anxiety: number, avoidance: number }
-): Promise<{ attachment: string }> => {
-    try {
-        const { data, error } = await supabase.functions.invoke('onboarding-analyze', {
-            body: { user_id: userId, scores }
-        });
+export const getTriggerSupport = async (trigger: any, attachmentStyle: string) => {
+    const { data, error } = await supabase.functions.invoke('trigger-support', {
+        body: { trigger, attachment_style: attachmentStyle }
+    });
 
-        if (error) throw error;
-        return data;
-    } catch (error) {
-        console.error("Onboarding Analysis Error:", error);
-        throw error;
+    if (error) {
+        console.error("Trigger support error:", error);
+        return null;
     }
+    return data;
 };
+
+

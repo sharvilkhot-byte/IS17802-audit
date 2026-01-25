@@ -21,6 +21,7 @@ interface AuthContextType {
     updateDailyStreak: (streak: number, date: string) => void;
     clearOnboardingData: () => Promise<boolean>;
     clearAuthError: () => void;
+    signOut: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -92,6 +93,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             fetchUserAndProfile(session).finally(() => {
                 setLoading(false);
             });
+        }).catch((err) => {
+            console.warn("Session check failed (safe to ignore if logged out):", err.message);
+            setLoading(false);
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -201,7 +205,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
-    const value = {
+    const signOut = async () => {
+        await supabase.auth.signOut();
+        setUser(null);
+    };
+
+    const value = React.useMemo(() => ({
         user,
         loading,
         authError,
@@ -210,8 +219,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         updateUserProfile,
         updateDailyStreak,
         clearOnboardingData,
-        clearAuthError
-    };
+        clearAuthError,
+        signOut
+    }), [user, loading, authError]);
 
     return (
         <AuthContext.Provider value={value}>

@@ -5,32 +5,75 @@ export default {
     theme: {
         extend: {
             colors: {
-                background: "#FAFBF9",
+                // Serenity Palette
+                brand: {
+                    lavender: '#7D71B8',    // Soft Lavender - Primary (Darkened for accessibility)
+                    coral: '#F4A896',       // Warm Coral - Secondary
+                    sky: '#B8D8E8',         // Soft Sky Blue
+                    cream: '#FFF5EB',       // Warm Cream
+                    rose: '#E8C5D8',        // Muted Rose
+                    deep: '#5B4E8B',        // Deep Purple - Dark text
+                    light: '#FAF8FF',       // Background off-white with purple tint
+                },
+
+                // Mapping legacy names to new palette for backward compatibility during refactor
+                background: "#FAF8FF",
                 surface: "#FFFFFF",
-                border: "#E6EAE4",
-
-                forest: "#1F4F3A",
-                moss: "#4F7C67",
-                sage: "#DCE8E0",
-
-                calm: "#D8E7F0",
-                low: "#EFE3E3",
-                tense: "#F3E8D9",
-                safe: "#E6F2EC",
-
-                textPrimary: "#1E2A23",
-                textSecondary: "#5F6F66",
-                textMuted: "#8A9A90",
+                forest: "#5B4E8B",      // Mapping to Deep Purple
+                moss: "#8B7FC7",        // Mapping to Lavender
+                sage: "#E8C5D8",        // Mapping to Rose
+                lime: {
+                    glow: "#B8D8E8",    // Mapping to Sky
+                },
+                peach: {
+                    fuzz: "#F4A896",    // Mapping to Coral
+                    mist: "#FFF5EB",    // Mapping to Cream
+                },
+                textPrimary: "#5B4E8B",
+                textSecondary: "#8B7FC7",
+                textMuted: "#A397D9",
+                border: "#E8C5D8",
+            },
+            fontFamily: {
+                sans: ['Quicksand', 'sans-serif'],
+                heading: ['"Playfair Display"', 'serif'],
             },
             borderRadius: {
-                xl: "20px",
-                "2xl": "28px",
-                emotional: "32px",
+                xl: '1rem',
+                '2xl': '1.5rem',
+                '3xl': '2rem',
+                'pill': '9999px',
+                emotional: "2rem", // Mapping legacy emotional radius
             },
             boxShadow: {
-                soft: "0 6px 20px rgba(0,0,0,0.06)",
-                lift: "0 10px 30px rgba(0,0,0,0.08)",
+                'soft': '0 10px 40px -10px rgba(139, 127, 199, 0.15)',
+                'inner-soft': 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.02)',
+                glass: "0 8px 32px 0 rgba(139, 127, 199, 0.1)",
             },
+            animation: {
+                'float': 'float 6s ease-in-out infinite',
+                'breathe': 'breathe 4s ease-in-out infinite',
+                'fade-in': 'fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                'slide-up': 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            },
+            keyframes: {
+                float: {
+                    '0%, 100%': { transform: 'translateY(0)' },
+                    '50%': { transform: 'translateY(-10px)' },
+                },
+                breathe: {
+                    '0%, 100%': { transform: 'scale(1)' },
+                    '50%': { transform: 'scale(1.05)' },
+                },
+                fadeIn: {
+                    'from': { opacity: '0' },
+                    'to': { opacity: '1' }
+                },
+                slideUp: {
+                    'from': { opacity: '0', transform: 'translateY(20px)' },
+                    'to': { opacity: '1', transform: 'translateY(0)' }
+                }
+            }
         },
     },
     plugins: [],

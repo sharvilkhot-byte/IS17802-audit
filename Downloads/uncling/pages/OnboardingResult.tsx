@@ -151,18 +151,18 @@ type Step =
 const OnboardingResult: React.FC = () => {
     const location = ReactRouterDOM.useLocation();
     const navigate = ReactRouterDOM.useNavigate();
-    const { updateOnboardingData } = useAuth();
+    const { user, updateOnboardingData } = useAuth();
 
     const result = location.state?.result;
     const [step, setStep] = useState<Step>(15);
 
     useEffect(() => {
-        if (!result) return;
+        if (!result || !user) return;
         const save = async () => {
             try { await updateOnboardingData(result); } catch (e) { console.error(e); }
         };
         save();
-    }, [result]);
+    }, [result, user, updateOnboardingData]);
 
     if (!result) return <ReactRouterDOM.Navigate to="/onboarding" replace />;
 
@@ -309,6 +309,16 @@ const OnboardingResult: React.FC = () => {
             );
 
         case 24: // Choice (Exit)
+            const handleContinue = () => {
+                if (!user) {
+                    console.log("OnboardingResult: User not authenticated, redirecting to auth");
+                    localStorage.setItem('unclinq_pending_onboarding', JSON.stringify(result));
+                    navigate('/auth', { state: { onboardingData: result } });
+                } else {
+                    console.log("OnboardingResult: User authenticated, going to dashboard");
+                    navigate('/dashboard');
+                }
+            };
             return (
                 <Container>
                     <LogoIcon className="w-16 h-16 opacity-80 mb-6" />
@@ -317,10 +327,10 @@ const OnboardingResult: React.FC = () => {
                         We help you slow things down, notice patterns gently, and build regulation before insight.
                     </p>
                     <div className="space-y-4 w-full max-w-xs">
-                        <Button onClick={() => navigate('/dashboard')} className="w-full bg-slate-900 hover:bg-slate-800">
+                        <Button onClick={handleContinue} className="w-full bg-slate-900 hover:bg-slate-800">
                             Start with a quiet check-in
                         </Button>
-                        <button onClick={() => navigate('/dashboard')} className="w-full py-3 text-slate-500 hover:text-slate-700 transition-colors font-medium">
+                        <button onClick={handleContinue} className="w-full py-3 text-slate-500 hover:text-slate-700 transition-colors font-medium">
                             Explore this later
                         </button>
                     </div>
