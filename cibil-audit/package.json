@@ -1,0 +1,32 @@
+{
+  "name": "cibil-accessibility-audit",
+  "version": "1.0.0",
+  "description": "IS 17802 Accessibility Audit Tool for CIBIL",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/server.js",
+    "build": "tsc",
+    "audit": "tsc && node dist/index.js",
+    "audit:headless": "cross-env HEADLESS=true tsc && node dist/index.js",
+    "install-browsers": "npx playwright install chromium",
+    "serve": "node serve.js",
+    "regenerate": "tsc && node dist/regenerate.js"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "^4.9.1",
+    "accessibility-checker-engine": "^4.0.16",
+    "axe-core": "^4.9.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "playwright": "^1.44.0",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}

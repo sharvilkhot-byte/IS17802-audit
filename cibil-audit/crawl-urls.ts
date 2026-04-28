@@ -1,0 +1,314 @@
+/**
+ * CIBIL URL Crawler
+ * Crawls cibil.com + transunioncibil.com, follows internal links up to a
+ * configurable depth, and writes per-language CSV files to the output folder.
+ *
+ * Usage:  npx ts-node crawl-urls.ts
+ * Output: C:\Users\<user>\OneDrive\Desktop\cibil url\urls.csv  (+ hi/ta/te/bn)
+ */
+
+import { chromium } from 'playwright';
+import fs from 'fs';
+import path from 'path';
+
+// ─── Config ──────────────────────────────────────────────────────────────────
+
+const TARGET_URL = process.env.TARGET_URL;
+
+const MAX_DEPTH   = 3;       // how many link-hops to follow from seed pages
+const CONCURRENCY = 4;       // pages visited in parallel
+const PAGE_TIMEOUT = 20000;  // ms per page load
+
+// Dynamic config: if TARGET_URL is provided, derive hosts/seeds from it
+let OUTPUT_DIR: string;
+let ALLOWED_HOSTS: Set<string>;
+let SEEDS_LIST: string[];
+
+if (TARGET_URL) {
+  const targetHost = new URL(TARGET_URL).hostname;
+  const rootDomain = targetHost.replace(/^www\./, '');
+  const siteOutputDir = process.env.OUTPUT_DIR ?? path.join(process.cwd(), 'audit-results');
+  OUTPUT_DIR = path.join(siteOutputDir, 'crawled-urls');
+  ALLOWED_HOSTS = new Set([targetHost, rootDomain, `www.${rootDomain}`]);
+  SEEDS_LIST = [TARGET_URL];
+} else {
+  OUTPUT_DIR = process.env.COVERAGE_SOURCE_DIR
+    ?? path.join(process.cwd(), 'audit-results', 'cibil-urls');
+  ALLOWED_HOSTS = new Set([
+    'www.cibil.com',
+    'cibil.com',
+    'www.transunioncibil.com',
+    'transunioncibil.com',
+    'myscore.cibil.com',
+    'documentupload.cibil.com',
+    'cibilrankccr.cibil.com',
+  ]);
+  SEEDS_LIST = [] as string[]; // filled below
+}
+
+// URL patterns to skip (login walls, file downloads, JS triggers, etc.)
+// Binary / non-HTML assets — skip from crawl queue but PDFs are collected separately
+const SKIP_CRAWL_PATTERNS = [
+  /\.(docx?|xlsx?|pptx?|zip|jpg|jpeg|png|gif|svg|ico|woff2?|ttf|eot|mp4|mp3|webp|avif)(\?|$)/i,
+  /^mailto:/,
+  /^tel:/,
+  /^javascript:/,
+  /\/logout/,
+  /\/resetpassword/,
+  /\/changepwd/,
+  /\?.*token=/,
+  /\?.*session=/,
+];
+
+// Tracking params to strip before dedup (don't affect page content)
+const TRACKING_PARAMS = new Set([
+  'utm_source','utm_medium','utm_campaign','utm_term','utm_content',
+  'gclid','fbclid','msclkid','ref','referrer','source','medium',
+  'campaign','affiliate','cid','sid','pid',
+]);
+
+// Query params that represent distinct pages — keep these
+const MEANINGFUL_PARAMS = new Set([
+  'enterprise','offer','tab','type','lang','page','category',
+]);
+
+// External domains always skipped
+const EXTERNAL_SKIP = [
+  'youtube.com', 'facebook.com', 'twitter.com', 'linkedin.com',
+  'instagram.com', 'hackerone.com', 'transunion.com', 'urldefense.com',
+  'google.com', 'apple.com', 'play.google.com', 'apps.apple.com',
+];
+
+// Seed pages — CIBIL defaults (used only when TARGET_URL is not set)
+const CIBIL_SEEDS: string[] = [
+  // English
+  'https://www.cibil.com/',
+  'https://www.cibil.com/consumer',
+  'https://www.cibil.com/loans',
+  'https://www.cibil.com/credit-cards',
+  'https://www.cibil.com/blog',
+  'https://www.cibil.com/faq/credit-score-and-loan-basics',
+  'https://www.cibil.com/contact-us',
+  'https://www.cibil.com/sitemap',
+  'https://www.transunioncibil.com/',
+  // Hindi
+  'https://www.cibil.com/hi',
+  'https://www.cibil.com/hi/consumer',
+  'https://www.cibil.com/hi/sitemap',
+  // Tamil
+  'https://www.cibil.com/ta',
+  'https://www.cibil.com/ta/consumer',
+  // Telugu
+  'https://www.cibil.com/te',
+  'https://www.cibil.com/te/consumer',
+  // Bengali
+  'https://www.cibil.com/bn',
+  'https://www.cibil.com/bn/consumer',
+];
+
+if (!TARGET_URL) {
+  SEEDS_LIST.push(...CIBIL_SEEDS);
+}
+
+const SEEDS = SEEDS_LIST;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function normalise(raw: string, base?: string): string | null {
+  try {
+    const url = new URL(raw, base);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    url.protocol = 'https:';
+    url.hash = '';
+
+    // Keep only meaningful query params, strip tracking ones
+    const kept: Array<[string, string]> = [];
+    url.searchParams.forEach((val, key) => {
+      const k = key.toLowerCase();
+      if (!TRACKING_PARAMS.has(k) && MEANINGFUL_PARAMS.has(k)) kept.push([k, val]);
+    });
+    const search = kept.length > 0
+      ? '?' + kept.sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')
+      : '';
+
+    const pathname = url.pathname === '/' ? '/' : url.pathname.replace(/\/+$/, '');
+    return ('https://' + url.hostname + pathname + search).toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function detectLang(url: string): 'en' | 'hi' | 'ta' | 'te' | 'bn' {
+  const m = url.match(/\/\/(www\.)?[^/]+\/(hi|ta|te|bn)(\/|$)/);
+  const code = m?.[2] as 'hi' | 'ta' | 'te' | 'bn' | undefined;
+  return code ?? 'en';
+}
+
+function isPdf(url: string): boolean {
+  try { return /\.pdf(\?|$)/i.test(new URL(url).pathname); } catch { return false; }
+}
+
+function shouldSkipCrawl(url: string): boolean {
+  if (EXTERNAL_SKIP.some(d => url.includes(d))) return true;
+  if (SKIP_CRAWL_PATTERNS.some(p => p.test(url))) return true;
+  try {
+    const { hostname } = new URL(url);
+    if (!ALLOWED_HOSTS.has(hostname)) return true;
+  } catch {
+    return true;
+  }
+  return false;
+}
+
+// Broader check used only for final CSV filtering (PDFs are kept, not skipped)
+function shouldExcludeFromCSV(url: string): boolean {
+  if (EXTERNAL_SKIP.some(d => url.includes(d))) return true;
+  if (/\.(docx?|xlsx?|pptx?|zip|jpg|jpeg|png|gif|svg|ico|woff2?|ttf|eot|mp4|mp3|webp|avif)(\?|$)/i.test(url)) return true;
+  try {
+    const { hostname } = new URL(url);
+    if (!ALLOWED_HOSTS.has(hostname)) return true;
+  } catch { return true; }
+  return false;
+}
+
+function writeCSV(lang: string, urls: string[], filename: string): void {
+  const lines = ['url', ...urls].map(u => `"${u}"`).join('\n');
+  fs.writeFileSync(filename, lines, 'utf-8');
+  console.log(`  Wrote ${urls.length} URLs → ${path.basename(filename)}`);
+}
+
+// ─── Crawler ─────────────────────────────────────────────────────────────────
+
+async function crawl(): Promise<void> {
+  console.log('\n' + '='.repeat(60));
+  console.log('  CIBIL URL Crawler');
+  console.log('='.repeat(60));
+  console.log(`Max depth: ${MAX_DEPTH}  |  Concurrency: ${CONCURRENCY}\n`);
+
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  // visited: normalised URL → true
+  const visited  = new Set<string>();
+  // discovered: normalised URL → lang
+  const found    = new Map<string, 'en' | 'hi' | 'ta' | 'te' | 'bn'>();
+  // queue: [normUrl, depth]
+  const queue: Array<[string, number]> = [];
+
+  // Seed the queue
+  for (const seed of SEEDS) {
+    const norm = normalise(seed);
+    if (norm && !visited.has(norm)) {
+      queue.push([norm, 0]);
+      found.set(norm, detectLang(norm));
+    }
+  }
+
+  let processed = 0;
+
+  while (queue.length > 0) {
+    // Take up to CONCURRENCY items
+    const batch = queue.splice(0, CONCURRENCY);
+    const contexts = await Promise.all(batch.map(async ([url, depth]) => {
+      if (visited.has(url)) return [];
+      visited.add(url);
+      processed++;
+
+      const context = await browser.newContext({
+        viewport: { width: 1280, height: 800 },
+        userAgent: 'Mozilla/5.0 (compatible; CIBIL-Crawler/1.0)',
+        ignoreHTTPSErrors: true,
+      });
+      const page = await context.newPage();
+
+      const links: string[] = [];
+      try {
+        await page.goto(url, { timeout: PAGE_TIMEOUT, waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(800);
+
+        // Extract all href attributes
+        const hrefs: string[] = await page.evaluate(() =>
+          Array.from(document.querySelectorAll('a[href]'))
+            .map(a => (a as HTMLAnchorElement).href)
+            .filter(Boolean),
+        );
+
+        for (const raw of hrefs) {
+          const norm = normalise(raw, url);
+          if (!norm) continue;
+
+          // Collect PDFs as separate entries (not crawled but recorded)
+          if (isPdf(norm)) {
+            if (!found.has(norm)) found.set(norm, detectLang(norm));
+            continue;
+          }
+
+          if (shouldSkipCrawl(norm)) continue;
+          if (!found.has(norm)) found.set(norm, detectLang(norm));
+          if (!visited.has(norm) && depth < MAX_DEPTH) links.push(norm);
+        }
+
+        process.stdout.write(`  [${processed}] ${url.replace('https://','').substring(0,70)}\n`);
+      } catch (err) {
+        process.stdout.write(`  [ERR] ${url.substring(0, 60)}: ${(err as Error).message.substring(0, 50)}\n`);
+      } finally {
+        await context.close();
+      }
+      return links.map(l => [l, depth + 1] as [string, number]);
+    }));
+
+    // Flatten and enqueue new URLs
+    for (const links of contexts) {
+      for (const [link, nextDepth] of links) {
+        if (!visited.has(link) && !queue.some(([u]) => u === link)) {
+          queue.push([link, nextDepth]);
+        }
+      }
+    }
+
+    console.log(`  Queue: ${queue.length} remaining  |  Found: ${found.size} unique URLs`);
+  }
+
+  await browser.close();
+
+  // ─── Write CSVs ───────────────────────────────────────────────────────────
+
+  console.log('\n' + '='.repeat(60));
+  console.log('  Writing CSV files...');
+  console.log('='.repeat(60));
+
+  const byLang: Record<string, string[]> = { en: [], hi: [], ta: [], te: [], bn: [] };
+
+  for (const [url, lang] of found.entries()) {
+    if (shouldExcludeFromCSV(url)) continue;
+    byLang[lang].push(url);
+  }
+
+  // Sort each group alphabetically for readability
+  for (const lang of Object.keys(byLang)) {
+    byLang[lang].sort();
+  }
+
+  writeCSV('en', byLang.en, path.join(OUTPUT_DIR, 'urls.csv'));
+  writeCSV('hi', byLang.hi, path.join(OUTPUT_DIR, 'urlshindi.csv'));
+  writeCSV('ta', byLang.ta, path.join(OUTPUT_DIR, 'urlstamil.csv'));
+  writeCSV('te', byLang.te, path.join(OUTPUT_DIR, 'urlstelgu.csv'));
+  writeCSV('bn', byLang.bn, path.join(OUTPUT_DIR, 'urlsbengali.csv'));
+
+  const total = Object.values(byLang).reduce((s, a) => s + a.length, 0);
+
+  console.log(`\nCrawl complete.`);
+  console.log(`  Pages visited : ${processed}`);
+  console.log(`  Unique URLs   : ${total}`);
+  console.log(`  Output dir    : ${OUTPUT_DIR}\n`);
+  console.log('Run `npx ts-node regen-html.ts` to update the report.\n');
+}
+
+crawl().catch(err => {
+  console.error('Crawler failed:', err);
+  process.exit(1);
+});

@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.cibil.com)",
+      "Bash(npm start:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e ':*)",
+      "Bash(wc -l *.csv)",
+      "Bash(npx ts-node:*)",
+      "Bash(python3 -c ':*)",
+      "Bash(npm install:*)",
+      "Bash(curl -s http://localhost:3000/api/status)",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3000)",
+      "Bash(taskkill:*)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(grep -m 5 \"file:///\" \"C:\\\\Users\\\\sharvil khot\\\\cibil-audit\\\\audit-results\\\\accessibility-report.html\")"
+    ]
+  }
+}
