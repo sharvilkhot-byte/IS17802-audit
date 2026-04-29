@@ -10,11 +10,12 @@ import { buildCoverage } from './src/coverage';
 import { AuditReport } from './src/types';
 import config from './src/config';
 
-const jsonPath = path.join(process.cwd(), 'audit-results', 'accessibility-report.json');
+const outputDir = process.env.OUTPUT_DIR ?? path.join(process.cwd(), 'audit-results');
+const jsonPath = path.join(outputDir, 'accessibility-report.json');
 const report: AuditReport = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
 
 // Re-build coverage from CSV files (in case config changed)
 report.coverage = buildCoverage(config);
 
-const htmlPath = generateHTMLReport(report, path.join(process.cwd(), 'audit-results'));
+const htmlPath = generateHTMLReport(report, outputDir);
 console.log(`\nHTML report regenerated: ${htmlPath}\n`);
