@@ -283,25 +283,33 @@ async function crawl(): Promise<void> {
   console.log('  Writing CSV files...');
   console.log('='.repeat(60));
 
-  const byLang: Record<string, string[]> = { en: [], hi: [], ta: [], te: [], bn: [] };
-
-  for (const [url, lang] of found.entries()) {
-    if (shouldExcludeFromCSV(url)) continue;
-    byLang[lang].push(url);
+  // Collect all valid URLs
+  const allUrls: string[] = [];
+  for (const [url] of found.entries()) {
+    if (!shouldExcludeFromCSV(url)) allUrls.push(url);
   }
+  allUrls.sort();
 
-  // Sort each group alphabetically for readability
-  for (const lang of Object.keys(byLang)) {
-    byLang[lang].sort();
+  let total: number;
+
+  if (TARGET_URL) {
+    // Generic site: single urls.csv with all discovered URLs
+    writeCSV('all', allUrls, path.join(OUTPUT_DIR, 'urls.csv'));
+    total = allUrls.length;
+  } else {
+    // CIBIL mode: split by language based on path prefix
+    const byLang: Record<string, string[]> = { en: [], hi: [], ta: [], te: [], bn: [] };
+    for (const url of allUrls) {
+      const lang = detectLang(url);
+      byLang[lang].push(url);
+    }
+    writeCSV('en', byLang.en, path.join(OUTPUT_DIR, 'urls.csv'));
+    writeCSV('hi', byLang.hi, path.join(OUTPUT_DIR, 'urlshindi.csv'));
+    writeCSV('ta', byLang.ta, path.join(OUTPUT_DIR, 'urlstamil.csv'));
+    writeCSV('te', byLang.te, path.join(OUTPUT_DIR, 'urlstelgu.csv'));
+    writeCSV('bn', byLang.bn, path.join(OUTPUT_DIR, 'urlsbengali.csv'));
+    total = allUrls.length;
   }
-
-  writeCSV('en', byLang.en, path.join(OUTPUT_DIR, 'urls.csv'));
-  writeCSV('hi', byLang.hi, path.join(OUTPUT_DIR, 'urlshindi.csv'));
-  writeCSV('ta', byLang.ta, path.join(OUTPUT_DIR, 'urlstamil.csv'));
-  writeCSV('te', byLang.te, path.join(OUTPUT_DIR, 'urlstelgu.csv'));
-  writeCSV('bn', byLang.bn, path.join(OUTPUT_DIR, 'urlsbengali.csv'));
-
-  const total = Object.values(byLang).reduce((s, a) => s + a.length, 0);
 
   console.log(`\nCrawl complete.`);
   console.log(`  Pages visited : ${processed}`);
