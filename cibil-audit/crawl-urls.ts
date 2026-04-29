@@ -17,9 +17,10 @@ import http from 'http';
 
 const TARGET_URL = process.env.TARGET_URL;
 
-const MAX_DEPTH   = 3;       // how many link-hops to follow from seed pages
-const CONCURRENCY = 4;       // pages visited in parallel
-const PAGE_TIMEOUT = 30000;  // ms per page load
+const MAX_DEPTH    = 3;     // how many link-hops to follow from seed pages
+const CONCURRENCY  = 4;     // pages visited in parallel
+const PAGE_TIMEOUT = 30000; // ms per page load
+const MAX_CRAWL_URLS = 500; // stop crawling after this many unique URLs found
 
 // Dynamic config: if TARGET_URL is provided, derive hosts/seeds from it
 let OUTPUT_DIR: string;
@@ -452,6 +453,10 @@ async function crawl(): Promise<void> {
     }
 
     console.log(`  Queue: ${queue.length} remaining  |  Found: ${found.size} unique URLs`);
+    if (found.size >= MAX_CRAWL_URLS) {
+      console.log(`  Crawl cap reached (${MAX_CRAWL_URLS} URLs) — stopping early.`);
+      break;
+    }
   }
 
   await browser.close();
