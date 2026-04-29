@@ -138,10 +138,38 @@ function normalise(raw: string, base?: string): string | null {
   }
 }
 
-function detectLang(url: string): 'en' | 'hi' | 'ta' | 'te' | 'bn' {
-  const m = url.match(/\/\/(www\.)?[^/]+\/(hi|ta|te|bn)(\/|$)/);
-  const code = m?.[2] as 'hi' | 'ta' | 'te' | 'bn' | undefined;
-  return code ?? 'en';
+// All 22 scheduled Indian languages (ISO 639-1 / BCP-47 codes)
+const INDIAN_LANG_CODES = new Set([
+  'hi', // Hindi
+  'ta', // Tamil
+  'te', // Telugu
+  'bn', // Bengali
+  'mr', // Marathi
+  'gu', // Gujarati
+  'kn', // Kannada
+  'ml', // Malayalam
+  'pa', // Punjabi
+  'or', // Odia
+  'as', // Assamese
+  'ur', // Urdu
+  'sa', // Sanskrit
+  'ks', // Kashmiri
+  'sd', // Sindhi
+  'ne', // Nepali
+  'kok', // Konkani
+  'mni', // Manipuri
+  'doi', // Dogri
+  'mai', // Maithili
+  'sat', // Santali
+  'brx', // Bodo
+]);
+
+function detectLang(url: string): string {
+  // Match /<langcode>/ or /<langcode> at end of path, e.g. /hi/, /ta/, /kok/
+  const m = url.match(/\/\/(www\.)?[^/]+\/([a-z]{2,4})(\/|$)/);
+  const code = m?.[2];
+  if (code && INDIAN_LANG_CODES.has(code)) return code;
+  return 'en';
 }
 
 function isPdf(url: string): boolean {
@@ -283,33 +311,38 @@ async function crawl(): Promise<void> {
   console.log('  Writing CSV files...');
   console.log('='.repeat(60));
 
-  // Collect all valid URLs
+  // Collect all valid URLs and group by detected language
   const allUrls: string[] = [];
+  const byLang: Record<string, string[]> = {};
+
   for (const [url] of found.entries()) {
-    if (!shouldExcludeFromCSV(url)) allUrls.push(url);
+    if (shouldExcludeFromCSV(url)) continue;
+    allUrls.push(url);
+    const lang = detectLang(url);
+    (byLang[lang] = byLang[lang] ?? []).push(url);
   }
   allUrls.sort();
+  for (const urls of Object.values(byLang)) urls.sort();
 
-  let total: number;
+  // urls.csv = ALL pages (every language) — this is what the audit engine reads
+  writeCSV('all', allUrls, path.join(OUTPUT_DIR, 'urls.csv'));
 
-  if (TARGET_URL) {
-    // Generic site: single urls.csv with all discovered URLs
-    writeCSV('all', allUrls, path.join(OUTPUT_DIR, 'urls.csv'));
-    total = allUrls.length;
-  } else {
-    // CIBIL mode: split by language based on path prefix
-    const byLang: Record<string, string[]> = { en: [], hi: [], ta: [], te: [], bn: [] };
-    for (const url of allUrls) {
-      const lang = detectLang(url);
-      byLang[lang].push(url);
-    }
-    writeCSV('en', byLang.en, path.join(OUTPUT_DIR, 'urls.csv'));
-    writeCSV('hi', byLang.hi, path.join(OUTPUT_DIR, 'urlshindi.csv'));
-    writeCSV('ta', byLang.ta, path.join(OUTPUT_DIR, 'urlstamil.csv'));
-    writeCSV('te', byLang.te, path.join(OUTPUT_DIR, 'urlstelgu.csv'));
-    writeCSV('bn', byLang.bn, path.join(OUTPUT_DIR, 'urlsbengali.csv'));
-    total = allUrls.length;
+  // Per-language CSVs — only written for languages actually found on this site
+  const langNames: Record<string, string> = {
+    hi: 'hindi', ta: 'tamil', te: 'telugu', bn: 'bengali',
+    mr: 'marathi', gu: 'gujarati', kn: 'kannada', ml: 'malayalam',
+    pa: 'punjabi', or: 'odia', as: 'assamese', ur: 'urdu',
+    sa: 'sanskrit', ks: 'kashmiri', sd: 'sindhi', ne: 'nepali',
+    kok: 'konkani', mni: 'manipuri', doi: 'dogri', mai: 'maithili',
+    sat: 'santali', brx: 'bodo',
+  };
+  for (const [lang, urls] of Object.entries(byLang)) {
+    if (lang === 'en' || urls.length === 0) continue;
+    const name = langNames[lang] ?? lang;
+    writeCSV(lang, urls, path.join(OUTPUT_DIR, `urls-${name}.csv`));
   }
+
+  const total = allUrls.length;
 
   console.log(`\nCrawl complete.`);
   console.log(`  Pages visited : ${processed}`);
