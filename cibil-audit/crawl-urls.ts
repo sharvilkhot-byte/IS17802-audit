@@ -223,7 +223,7 @@ async function crawl(): Promise<void> {
   // visited: normalised URL → true
   const visited  = new Set<string>();
   // discovered: normalised URL → lang
-  const found    = new Map<string, 'en' | 'hi' | 'ta' | 'te' | 'bn'>();
+  const found    = new Map<string, string>();
   // queue: [normUrl, depth]
   const queue: Array<[string, number]> = [];
 
