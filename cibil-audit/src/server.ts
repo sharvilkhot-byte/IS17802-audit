@@ -149,9 +149,11 @@ app.get('/api/reports', async (_req: Request, res: Response) => {
 
 // SSE — live progress stream
 app.get('/api/progress', (req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable Railway/nginx proxy buffering
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders();
 
   // Send current state immediately on connect
@@ -160,7 +162,15 @@ app.get('/api/progress', (req: Request, res: Response) => {
   const onEvent = (data: string) => res.write(`data: ${data}\n\n`);
   progressBus.on('event', onEvent);
 
-  req.on('close', () => progressBus.off('event', onEvent));
+  // Keepalive heartbeat every 15s — prevents Railway/HTTP2 from closing idle SSE connections
+  const heartbeat = setInterval(() => {
+    res.write(': ping\n\n');
+  }, 15000);
+
+  req.on('close', () => {
+    progressBus.off('event', onEvent);
+    clearInterval(heartbeat);
+  });
 });
 
 // Trigger new audit

@@ -726,7 +726,7 @@ function connectSSE(){
       isRunning=false;
     }
   };
-  es.onerror = () => setTimeout(connectSSE, 3000);
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
 }
 
 // ── Run audit ─────────────────────────────────────────────────────────────────
