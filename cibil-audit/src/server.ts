@@ -47,27 +47,37 @@ const state: AuditState = {
 
 // ─── State persistence ────────────────────────────────────────────────────────
 // Saves state to disk so progress survives container restarts and page refreshes.
-// Railway filesystem persists across restarts (only reset on new deployments).
+// Writes are debounced to avoid hammering the filesystem on every log line.
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function persistState() {
-  try {
-    fs.mkdirSync(BASE_RESULTS_DIR, { recursive: true });
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state), 'utf-8');
-  } catch { /* non-fatal */ }
+  if (persistTimer) return; // already scheduled
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      fs.mkdirSync(BASE_RESULTS_DIR, { recursive: true });
+      const tmp = STATE_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(state), 'utf-8');
+      fs.renameSync(tmp, STATE_FILE); // atomic replace — prevents corrupt reads
+    } catch { /* non-fatal */ }
+  }, 500);
 }
 
 function restoreState() {
   try {
     if (!fs.existsSync(STATE_FILE)) return;
-    const saved: AuditState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
-    // If the process was killed mid-run, mark it as error rather than stuck "running"
+    const raw = fs.readFileSync(STATE_FILE, 'utf-8').trim();
+    if (!raw || !raw.startsWith('{')) return; // guard against empty/corrupt file
+    const saved = JSON.parse(raw) as AuditState;
+    // If process was killed mid-run, mark as error so UI doesn't show stuck spinner
     Object.assign(state, {
       ...saved,
       running: false,
-      phase: saved.running ? 'error' : saved.phase,
-      lastError: saved.running ? 'Server restarted mid-audit' : saved.lastError,
+      phase: saved.running ? 'error' : (saved.phase ?? 'idle'),
+      lastError: saved.running ? 'Server restarted mid-audit — please run again' : saved.lastError,
     });
-  } catch { /* ignore corrupt file */ }
+  } catch { /* ignore any corrupt/missing file */ }
 }
 
 const progressBus = new EventEmitter();
