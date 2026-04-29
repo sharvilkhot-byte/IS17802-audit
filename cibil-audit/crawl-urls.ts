@@ -10,6 +10,8 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
+import https from 'https';
+import http from 'http';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -205,6 +207,94 @@ function writeCSV(lang: string, urls: string[], filename: string): void {
   console.log(`  Wrote ${urls.length} URLs → ${path.basename(filename)}`);
 }
 
+// ─── Sitemap fetcher ─────────────────────────────────────────────────────────
+
+function fetchText(url: string, redirects = 5): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (redirects <= 0) return reject(new Error('Too many redirects'));
+    const lib = url.startsWith('https') ? https : http;
+    const req = lib.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,text/xml,application/xml,*/*',
+        'Accept-Language': 'en-IN,en;q=0.9',
+      },
+    }, res => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return fetchText(res.headers.location, redirects - 1).then(resolve).catch(reject);
+      }
+      if (!res.statusCode || res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}`));
+      let data = '';
+      res.on('data', (chunk: Buffer) => data += chunk.toString());
+      res.on('end', () => resolve(data));
+    });
+    req.setTimeout(12000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.on('error', reject);
+  });
+}
+
+function extractLocsFromXml(xml: string): string[] {
+  const locs: string[] = [];
+  const re = /<loc[^>]*>([\s\S]*?)<\/loc>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    const u = m[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    if (u.startsWith('http')) locs.push(u);
+  }
+  return locs;
+}
+
+async function fetchSitemapUrls(origin: string): Promise<string[]> {
+  // 1. Check robots.txt for Sitemap: directive
+  const candidates: string[] = [];
+  try {
+    const robots = await fetchText(`${origin}/robots.txt`);
+    for (const line of robots.split('\n')) {
+      const m = line.match(/^Sitemap:\s*(.+)/i);
+      if (m) candidates.push(m[1].trim());
+    }
+  } catch { /* robots.txt not found — fine */ }
+
+  // 2. Try common sitemap paths
+  candidates.push(
+    `${origin}/sitemap.xml`,
+    `${origin}/sitemap_index.xml`,
+    `${origin}/sitemap/sitemap.xml`,
+    `${origin}/sitemaps/sitemap.xml`,
+    `${origin}/sitemap-index.xml`,
+  );
+
+  const allUrls: string[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      const xml = await fetchText(candidate);
+      if (!xml.includes('<loc>') && !xml.includes('<loc ')) continue;
+
+      const locs = extractLocsFromXml(xml);
+
+      // Sitemap index — contains pointers to other sitemaps
+      if (xml.includes('<sitemapindex') || (xml.includes('<sitemap>') && locs.some(l => l.endsWith('.xml')))) {
+        const subSitemaps = locs.filter(l => l.endsWith('.xml') || l.includes('sitemap'));
+        for (const sub of subSitemaps) {
+          try {
+            const subXml = await fetchText(sub);
+            allUrls.push(...extractLocsFromXml(subXml));
+          } catch { /* sub-sitemap unavailable */ }
+        }
+        // Also keep any page URLs directly in the index
+        allUrls.push(...locs.filter(l => !l.endsWith('.xml') && !l.includes('sitemap')));
+      } else {
+        allUrls.push(...locs);
+      }
+
+      if (allUrls.length > 0) break; // stop at first successful sitemap
+    } catch { /* this candidate not available */ }
+  }
+
+  return allUrls;
+}
+
 // ─── Crawler ─────────────────────────────────────────────────────────────────
 
 async function crawl(): Promise<void> {
@@ -215,6 +305,38 @@ async function crawl(): Promise<void> {
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
+  // ── Sitemap-first strategy ──────────────────────────────────────────────────
+  // Try to get URLs from sitemap.xml before launching a browser.
+  // This bypasses bot-detection and is much faster.
+  const found = new Map<string, string>();
+
+  if (TARGET_URL) {
+    const origin = new URL(TARGET_URL).origin;
+    console.log(`  Checking sitemap for ${origin}…`);
+    try {
+      const sitemapUrls = await fetchSitemapUrls(origin);
+      const filtered = sitemapUrls
+        .map(u => normalise(u))
+        .filter((u): u is string => u !== null && !shouldSkipCrawl(u));
+
+      if (filtered.length > 0) {
+        console.log(`  ✓ Sitemap found — ${filtered.length} URLs discovered (skipping browser crawl)\n`);
+        for (const u of filtered) found.set(u, detectLang(u));
+      } else {
+        console.log(`  ✗ No usable sitemap — falling back to browser crawl\n`);
+      }
+    } catch (e) {
+      console.log(`  ✗ Sitemap fetch failed (${(e as Error).message}) — falling back to browser crawl\n`);
+    }
+  }
+
+  // If sitemap gave us URLs, skip the browser crawl entirely
+  if (found.size > 0) {
+    writeCsvOutputs(found);
+    return;
+  }
+
+  // ── Browser crawl fallback ──────────────────────────────────────────────────
   const browser = await chromium.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -222,8 +344,6 @@ async function crawl(): Promise<void> {
 
   // visited: normalised URL → true
   const visited  = new Set<string>();
-  // discovered: normalised URL → lang
-  const found    = new Map<string, string>();
   // queue: [normUrl, depth]
   const queue: Array<[string, number]> = [];
 
@@ -319,13 +439,14 @@ async function crawl(): Promise<void> {
 
   await browser.close();
 
-  // ─── Write CSVs ───────────────────────────────────────────────────────────
+  writeCsvOutputs(found, processed);
+}
 
+function writeCsvOutputs(found: Map<string, string>, pagesVisited = 0): void {
   console.log('\n' + '='.repeat(60));
   console.log('  Writing CSV files...');
   console.log('='.repeat(60));
 
-  // Collect all valid URLs and group by detected language
   const allUrls: string[] = [];
   const byLang: Record<string, string[]> = {};
 
@@ -356,11 +477,9 @@ async function crawl(): Promise<void> {
     writeCSV(lang, urls, path.join(OUTPUT_DIR, `urls-${name}.csv`));
   }
 
-  const total = allUrls.length;
-
   console.log(`\nCrawl complete.`);
-  console.log(`  Pages visited : ${processed}`);
-  console.log(`  Unique URLs   : ${total}`);
+  if (pagesVisited > 0) console.log(`  Pages visited : ${pagesVisited}`);
+  console.log(`  Unique URLs   : ${allUrls.length}`);
   console.log(`  Output dir    : ${OUTPUT_DIR}\n`);
   console.log('Run `npx ts-node regen-html.ts` to update the report.\n');
 }
