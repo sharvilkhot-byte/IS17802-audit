@@ -551,7 +551,7 @@ const PHASE_LABEL = {
   error:     'Audit encountered an error',
 };
 
-let es=null, isRunning=false;
+let isRunning=false;
 const q = s => document.querySelector(s);
 const fmt = n => Number(n||0).toLocaleString();
 
@@ -687,46 +687,66 @@ function renderReports(reports){
   </div>`;
 }
 
-// ── SSE ───────────────────────────────────────────────────────────────────────
-function connectSSE(){
-  if(es) es.close();
-  es = new EventSource('/api/progress');
-  es.onmessage = e => {
-    const d = JSON.parse(e.data);
-    if(d.type==='state'){
-      setNavStatus(d.phase||'idle');
-      setButton(d.running||false);
-      if(d.running||(d.phase&&d.phase!=='idle')){
-        showProgress(true);
-        setProgress(d.phase);
-        setStep(d.phase);
-        setBadge(d.phase);
-        if(d.targetUrl||d.startedAt) setProgressTitle(d.targetUrl||'https://www.cibil.com', d.startedAt);
-        if(d.log&&d.log.length){ document.getElementById('log-wrap').innerHTML=''; d.log.forEach(l=>appendLog(l)); }
-      }
-      if(d.reports) renderReports(d.reports);
-      isRunning = d.running||false;
-      return;
+// ── Polling (replaces SSE — avoids Railway HTTP/2 drop issues) ────────────────
+let pollTimer = null;
+let lastLogCount = 0;
+let lastPhase = null;
+
+function applyState(d){
+  const phase = d.phase || 'idle';
+  const running = d.running || false;
+
+  setNavStatus(phase);
+  setButton(running);
+
+  if(running || (phase && phase !== 'idle')){
+    showProgress(true);
+    setProgress(phase);
+    setStep(phase);
+    setBadge(phase);
+    if(d.targetUrl || d.startedAt)
+      setProgressTitle(d.targetUrl || 'https://www.cibil.com', d.startedAt);
+
+    // Sync log — only append new lines since last poll
+    if(d.log && d.log.length > lastLogCount){
+      const newLines = d.log.slice(lastLogCount);
+      newLines.forEach(l => appendLog(l));
+      lastLogCount = d.log.length;
     }
-    if(d.type==='phase'){
-      showProgress(true);
-      setNavStatus(d.phase); setProgress(d.phase); setStep(d.phase); setBadge(d.phase);
-      appendLog('▶ '+d.message,'phase');
-    } else if(d.type==='log'){
-      appendLog(d.message);
-    } else if(d.type==='complete'){
-      setNavStatus('complete'); setProgress('complete'); setStep('complete');
-      setBadge('complete'); setButton(false);
-      appendLog('✓ '+d.message,'complete');
-      isRunning=false;
+  }
+
+  isRunning = running;
+
+  if(!running && phase !== lastPhase){
+    if(phase === 'complete'){
+      setBadge('complete');
       fetch('/api/reports').then(r=>r.json()).then(renderReports);
-    } else if(d.type==='error'){
-      setNavStatus('error'); setProgress('error'); setBadge('error'); setButton(false);
-      appendLog('✗ '+d.message,'error');
-      isRunning=false;
     }
-  };
-  es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+    if(phase === 'error' && d.lastError){
+      appendLog('✗ ' + d.lastError, 'error');
+    }
+  }
+  lastPhase = phase;
+}
+
+function startPolling(){
+  if(pollTimer) return;
+  pollTimer = setInterval(()=>{
+    fetch('/api/status')
+      .then(r=>r.json())
+      .then(d=>{
+        applyState(d);
+        // Stop polling once audit is done
+        if(!d.running && (d.phase === 'complete' || d.phase === 'error' || d.phase === 'idle')){
+          stopPolling();
+        }
+      })
+      .catch(()=>{}); // silent on network blips
+  }, 2000);
+}
+
+function stopPolling(){
+  if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
 }
 
 // ── Run audit ─────────────────────────────────────────────────────────────────
@@ -744,6 +764,7 @@ document.getElementById('btn-run').addEventListener('click', ()=>{
     }
   }
   document.getElementById('log-wrap').innerHTML='';
+  lastLogCount = 0; lastPhase = null;
   showProgress(true);
   setProgressTitle(body.url||'https://www.cibil.com', new Date().toISOString());
   appendLog('Initialising audit for '+(body.url||'www.cibil.com')+'…','phase');
@@ -752,22 +773,17 @@ document.getElementById('btn-run').addEventListener('click', ()=>{
 
   fetch('/api/audit/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
     .then(r=>r.json())
-    .then(d=>{ if(d.error){ appendLog(d.error,'error'); setButton(false); isRunning=false; setBadge('error'); }})
+    .then(d=>{
+      if(d.error){ appendLog(d.error,'error'); setButton(false); isRunning=false; setBadge('error'); return; }
+      startPolling();
+    })
     .catch(e=>{ appendLog('Connection error: '+e.message,'error'); setButton(false); isRunning=false; });
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-connectSSE();
 fetch('/api/status').then(r=>r.json()).then(d=>{
-  setNavStatus(d.phase||'idle');
-  setButton(d.running||false);
-  if(d.running||(d.phase&&d.phase!=='idle')){
-    showProgress(true); setProgress(d.phase); setStep(d.phase); setBadge(d.phase);
-    if(d.targetUrl||d.startedAt) setProgressTitle(d.targetUrl||'https://www.cibil.com',d.startedAt);
-    if(d.log&&d.log.length){ document.getElementById('log-wrap').innerHTML=''; d.log.forEach(l=>appendLog(l)); }
-  }
-  if(d.reports) renderReports(d.reports);
-  isRunning=d.running||false;
+  applyState(d);
+  if(d.running) startPolling();
   if(location.hostname!=='localhost'&&location.hostname!=='127.0.0.1')
     document.getElementById('storage-notice').style.display='flex';
 });
