@@ -17,7 +17,7 @@ const TARGET_URL = process.env.TARGET_URL;
 
 const MAX_DEPTH   = 3;       // how many link-hops to follow from seed pages
 const CONCURRENCY = 4;       // pages visited in parallel
-const PAGE_TIMEOUT = 20000;  // ms per page load
+const PAGE_TIMEOUT = 30000;  // ms per page load
 
 // Dynamic config: if TARGET_URL is provided, derive hosts/seeds from it
 let OUTPUT_DIR: string;
@@ -219,8 +219,8 @@ async function crawl(): Promise<void> {
       processed++;
 
       const context = await browser.newContext({
-        viewport: { width: 1280, height: 800 },
-        userAgent: 'Mozilla/5.0 (compatible; CIBIL-Crawler/1.0)',
+        viewport: { width: 1280, height: 900 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         ignoreHTTPSErrors: true,
       });
       const page = await context.newPage();
@@ -228,7 +228,9 @@ async function crawl(): Promise<void> {
       const links: string[] = [];
       try {
         await page.goto(url, { timeout: PAGE_TIMEOUT, waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(800);
+        // Wait for network to settle (SPA hydration), with a generous fallback
+        await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(500);
 
         // Extract all href attributes
         const hrefs: string[] = await page.evaluate(() =>
