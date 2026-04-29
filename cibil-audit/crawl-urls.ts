@@ -247,18 +247,29 @@ async function crawl(): Promise<void> {
       processed++;
 
       const context = await browser.newContext({
-        viewport: { width: 1280, height: 900 },
+        viewport: { width: 1440, height: 900 },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         ignoreHTTPSErrors: true,
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-IN,en;q=0.9,hi;q=0.8',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        },
+        javaScriptEnabled: true,
       });
       const page = await context.newPage();
 
       const links: string[] = [];
       try {
-        await page.goto(url, { timeout: PAGE_TIMEOUT, waitUntil: 'domcontentloaded' });
-        // Wait for network to settle (SPA hydration), with a generous fallback
-        await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
-        await page.waitForTimeout(500);
+        await page.goto(url, { timeout: PAGE_TIMEOUT, waitUntil: 'load' });
+        // Wait for SPA hydration — try networkidle then scroll to trigger lazy content
+        await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
+        // Scroll through page to trigger lazy-rendered nav/footer links
+        await page.evaluate(() => {
+          window.scrollTo(0, document.body.scrollHeight / 2);
+          window.scrollTo(0, document.body.scrollHeight);
+          window.scrollTo(0, 0);
+        });
+        await page.waitForTimeout(1500);
 
         // Extract all href attributes
         const hrefs: string[] = await page.evaluate(() =>
@@ -267,22 +278,25 @@ async function crawl(): Promise<void> {
             .filter(Boolean),
         );
 
+        let accepted = 0, skipped = 0;
         for (const raw of hrefs) {
           const norm = normalise(raw, url);
-          if (!norm) continue;
+          if (!norm) { skipped++; continue; }
 
           // Collect PDFs as separate entries (not crawled but recorded)
           if (isPdf(norm)) {
             if (!found.has(norm)) found.set(norm, detectLang(norm));
+            accepted++;
             continue;
           }
 
-          if (shouldSkipCrawl(norm)) continue;
+          if (shouldSkipCrawl(norm)) { skipped++; continue; }
+          accepted++;
           if (!found.has(norm)) found.set(norm, detectLang(norm));
           if (!visited.has(norm) && depth < MAX_DEPTH) links.push(norm);
         }
 
-        process.stdout.write(`  [${processed}] ${url.replace('https://','').substring(0,70)}\n`);
+        process.stdout.write(`  [${processed}] ${url.replace('https://','').substring(0,70)} — ${hrefs.length} hrefs found, ${accepted} kept, ${skipped} filtered\n`);
       } catch (err) {
         process.stdout.write(`  [ERR] ${url.substring(0, 60)}: ${(err as Error).message.substring(0, 50)}\n`);
       } finally {
