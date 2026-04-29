@@ -361,9 +361,7 @@ function renderReports(reports){
     let host = 'cibil.com', origin = '';
     try{ const u = new URL(r.targetUrl); host = u.hostname; origin = u.origin; }catch{}
     const date = r.auditedAt ? new Date(r.auditedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '';
-    const reportUrl = r.reportPath && r.reportPath !== 'accessibility-report.html'
-      ? '/audit-results/' + r.reportPath
-      : '/report';
+    const reportUrl = r.id ? `/report?id=${r.id}` : (r.reportPath && r.reportPath !== 'accessibility-report.html' ? '/audit-results/' + r.reportPath : '/report');
     const total = (r.totalViolations??0);
     const cr = r.critical??0, se = r.serious??0;
     const scoreClass = cr>0?'cr':se>0?'se':'ok';

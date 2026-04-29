@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
+import { hasDb, initDb, saveAudit, listAudits, getAuditHtml, getReportFromFs } from './db';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -101,26 +102,49 @@ app.get('/', (_req: Request, res: Response) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-// Report page — ?site=hostname for per-site reports
-app.get('/report', (req: Request, res: Response) => {
+// Report page — ?id=123 (DB) or ?site=hostname (filesystem fallback)
+app.get('/report', async (req: Request, res: Response) => {
+  const id = req.query.id ? parseInt(req.query.id as string, 10) : null;
+
+  if (id && hasDb()) {
+    const html = await getAuditHtml(id);
+    if (!html) return res.status(404).send('Report not found.');
+    return res.type('html').send(html);
+  }
+
+  // Filesystem fallback
   const site = req.query.site as string | undefined;
   const dir = site ? path.join(BASE_RESULTS_DIR, site) : BASE_RESULTS_DIR;
-  const htmlPath = path.join(dir, 'accessibility-report.html');
-  if (!fs.existsSync(htmlPath)) {
-    return res.status(404).send('No report found. Run an audit first.');
-  }
-  res.sendFile(htmlPath);
+  const html = getReportFromFs(dir);
+  if (!html) return res.status(404).send('No report found. Run an audit first.');
+  res.type('html').send(html);
 });
 
-// Current state + report meta for active/last audit
+// Current state
 app.get('/api/status', (_req: Request, res: Response) => {
   const dir = resultsDirFor(state.targetUrl);
-  res.json({ ...state, meta: getReportMeta(dir), reports: getAllReports() });
+  res.json({ ...state, meta: getReportMeta(dir) });
 });
 
 // All completed reports
-app.get('/api/reports', (_req: Request, res: Response) => {
-  res.json(getAllReports());
+app.get('/api/reports', async (_req: Request, res: Response) => {
+  if (hasDb()) {
+    const rows = await listAudits();
+    res.json(rows.map(r => ({
+      id:              r.id,
+      targetUrl:       r.target_url,
+      hostname:        r.hostname,
+      auditedAt:       r.audited_at,
+      totalPages:      r.total_pages,
+      totalViolations: r.total_violations,
+      critical:        r.critical,
+      serious:         r.serious,
+      moderate:        r.moderate,
+      minor:           r.minor,
+    })));
+  } else {
+    res.json(getAllReports());
+  }
 });
 
 // SSE — live progress stream
@@ -189,13 +213,44 @@ function runAudit(targetUrl?: string) {
       state.phase = 'generating';
       return runProcess('node', ['dist/regen-html.js'], 'generating', extraEnv);
     })
-    .then(() => {
+    .then(async () => {
       state.phase       = 'complete';
       state.running     = false;
       state.completedAt = new Date().toISOString();
+
+      // Save to DB if configured
+      let savedId: number | null = null;
+      if (hasDb()) {
+        try {
+          const meta = getReportMeta(outputDir);
+          const html = getReportFromFs(outputDir);
+          if (meta && html) {
+            const hostname = targetUrl
+              ? (() => { try { return new URL(targetUrl).hostname; } catch { return 'cibil.com'; } })()
+              : 'www.cibil.com';
+            savedId = await saveAudit({
+              targetUrl:       targetUrl ?? 'https://www.cibil.com',
+              hostname,
+              auditedAt:       meta.auditedAt ?? new Date().toISOString(),
+              totalPages:      meta.totalPages ?? 0,
+              totalViolations: meta.totalViolations ?? 0,
+              critical:        meta.critical ?? 0,
+              serious:         meta.serious ?? 0,
+              moderate:        meta.moderate ?? 0,
+              minor:           meta.minor ?? 0,
+              reportHtml:      html,
+            });
+            push('log', `Report saved to database (id: ${savedId})`, { phase: 'complete' });
+          }
+        } catch (dbErr) {
+          push('log', `Warning: DB save failed — ${(dbErr as Error).message}`, { phase: 'complete' });
+        }
+      }
+
       push('complete', 'Audit complete — report is ready.', {
         phase: 'complete',
-        meta: getReportMeta(outputDir),
+        meta:  getReportMeta(outputDir),
+        reportId: savedId,
       });
     })
     .catch((err: Error) => {
@@ -241,10 +296,17 @@ function runProcess(cmd: string, args: string[], phase: string, extraEnv: Record
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
+initDb()
+  .then(() => {
+    if (hasDb()) console.log('  Database connected and schema ready');
+  })
+  .catch(err => console.warn('  DB init warning:', err.message));
+
 app.listen(PORT, () => {
   console.log(`\n${'='.repeat(50)}`);
   console.log(`  IS 17802 Audit Tool`);
   console.log(`${'='.repeat(50)}`);
   console.log(`  Server running at http://localhost:${PORT}`);
+  console.log(`  Database: ${hasDb() ? 'PostgreSQL' : 'filesystem (no DATABASE_URL set)'}`);
   console.log(`  Open the URL above in your browser\n`);
 });
