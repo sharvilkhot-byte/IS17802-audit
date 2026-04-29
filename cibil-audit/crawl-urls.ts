@@ -339,7 +339,14 @@ async function crawl(): Promise<void> {
   // ── Browser crawl fallback ──────────────────────────────────────────────────
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-infobars',
+      '--window-size=1440,900',
+      '--disable-dev-shm-usage',
+    ],
   });
 
   // visited: normalised URL → true
@@ -373,10 +380,20 @@ async function crawl(): Promise<void> {
         extraHTTPHeaders: {
           'Accept-Language': 'en-IN,en;q=0.9,hi;q=0.8',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
         },
         javaScriptEnabled: true,
       });
       const page = await context.newPage();
+      // Remove webdriver flag that sites use to detect automation
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-IN', 'en', 'hi'] });
+        (window as any).chrome = { runtime: {} };
+      });
 
       const links: string[] = [];
       try {

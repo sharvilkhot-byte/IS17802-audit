@@ -265,7 +265,7 @@ function runProcess(cmd: string, args: string[], phase: string, extraEnv: Record
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd: process.cwd(),
-      shell: true,
+      shell: false,
       env: { ...process.env, HEADLESS: 'true', ...extraEnv },
     });
 
