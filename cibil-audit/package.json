@@ -4,7 +4,7 @@
   "description": "IS 17802 Accessibility Audit Tool for CIBIL",
   "main": "dist/index.js",
   "scripts": {
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "build": "tsc",
     "audit": "tsc && node dist/index.js",
     "audit:headless": "cross-env HEADLESS=true tsc && node dist/index.js",
