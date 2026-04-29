@@ -9,6 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const BASE_RESULTS_DIR = path.join(process.cwd(), 'audit-results');
 const PUBLIC_DIR       = path.join(process.cwd(), 'public');
+const STATE_FILE       = path.join(BASE_RESULTS_DIR, '.audit-state.json');
 
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR));
@@ -44,6 +45,31 @@ const state: AuditState = {
   log: [],
 };
 
+// ─── State persistence ────────────────────────────────────────────────────────
+// Saves state to disk so progress survives container restarts and page refreshes.
+// Railway filesystem persists across restarts (only reset on new deployments).
+
+function persistState() {
+  try {
+    fs.mkdirSync(BASE_RESULTS_DIR, { recursive: true });
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state), 'utf-8');
+  } catch { /* non-fatal */ }
+}
+
+function restoreState() {
+  try {
+    if (!fs.existsSync(STATE_FILE)) return;
+    const saved: AuditState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    // If the process was killed mid-run, mark it as error rather than stuck "running"
+    Object.assign(state, {
+      ...saved,
+      running: false,
+      phase: saved.running ? 'error' : saved.phase,
+      lastError: saved.running ? 'Server restarted mid-audit' : saved.lastError,
+    });
+  } catch { /* ignore corrupt file */ }
+}
+
 const progressBus = new EventEmitter();
 progressBus.setMaxListeners(50);
 
@@ -51,6 +77,7 @@ function push(type: string, message: string, extra: object = {}) {
   const entry = { type, message, ts: new Date().toISOString(), ...extra };
   if (type === 'log') state.log.push(message);
   progressBus.emit('event', JSON.stringify(entry));
+  persistState();
 }
 
 // ─── Report meta ──────────────────────────────────────────────────────────────
@@ -193,6 +220,7 @@ app.post('/api/audit/start', (req: Request, res: Response) => {
   state.lastError = null;
   state.targetUrl = targetUrl ?? null;
   state.log       = [];
+  persistState();
 
   res.json({ started: true });
 
@@ -305,6 +333,8 @@ function runProcess(cmd: string, args: string[], phase: string, extraEnv: Record
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+
+restoreState();
 
 initDb()
   .then(() => {
