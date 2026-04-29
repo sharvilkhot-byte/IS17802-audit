@@ -8,38 +8,18 @@ import config from './config';
 import fs from 'fs';
 import path from 'path';
 
-// Max pages to audit per run — prevents OOM crashes on large sites.
-// Crawl discovers all URLs; audit samples a representative spread.
-const MAX_AUDIT_URLS = parseInt(process.env.MAX_AUDIT_URLS ?? '150', 10);
-
-function sampleUrls(urls: string[], max: number): string[] {
-  if (urls.length <= max) return urls;
-  // Always include homepage, then spread evenly across the rest
-  const [first, ...rest] = urls;
-  const step = Math.ceil(rest.length / (max - 1));
-  const sampled = rest.filter((_, i) => i % step === 0).slice(0, max - 1);
-  return [first, ...sampled];
-}
-
 function buildDynamicConfig(targetUrl: string): AuditConfig {
   const outputDir = process.env.OUTPUT_DIR ?? path.join(process.cwd(), 'audit-results');
   const csvDir = path.join(outputDir, 'crawled-urls');
   const csvPath = path.join(csvDir, 'urls.csv');
 
-  const allUrls = fs.existsSync(csvPath)
+  const pages = fs.existsSync(csvPath)
     ? fs.readFileSync(csvPath, 'utf8')
         .split('\n')
         .map(l => l.trim().replace(/^"|"$/g, ''))
         .filter(l => l.startsWith('http'))
-    : [targetUrl];
-
-  const sampled = sampleUrls(allUrls, MAX_AUDIT_URLS);
-  if (allUrls.length > MAX_AUDIT_URLS) {
-    console.log(`  URLs discovered : ${allUrls.length}`);
-    console.log(`  URLs to audit   : ${sampled.length} (capped at ${MAX_AUDIT_URLS} — set MAX_AUDIT_URLS env var to change)`);
-  }
-
-  const pages = sampled.map((url, i) => ({ name: `Page ${i + 1}`, url, waitFor: 'body' as const }));
+        .map((url, i) => ({ name: `Page ${i + 1}`, url, waitFor: 'body' as const }))
+    : [{ name: 'Homepage', url: targetUrl, waitFor: 'body' as const }];
 
   return {
     ...config,
