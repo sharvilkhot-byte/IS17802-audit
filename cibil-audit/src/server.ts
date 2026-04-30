@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import { hasDb, initDb, saveAudit, listAudits, getAuditHtml, getReportFromFs } from './db';
 
 const app = express();
@@ -32,6 +33,8 @@ interface AuditState {
   completedAt: string | null;
   lastError: string | null;
   targetUrl: string | null;
+  auditId: string | null;
+  reportId: number | null;
   log: string[];
 }
 
@@ -42,6 +45,8 @@ const state: AuditState = {
   completedAt: null,
   lastError: null,
   targetUrl: null,
+  auditId: null,
+  reportId: null,
   log: [],
 };
 
@@ -139,6 +144,20 @@ app.get('/', (_req: Request, res: Response) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
+// Unique audit progress page — /audit/:id
+app.get('/audit/:id', (req: Request, res: Response) => {
+  // If this is the current audit, serve the app (it'll poll /api/status)
+  // If it's an old audit ID and we have a reportId, redirect to report
+  if (state.auditId === req.params.id) {
+    return res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  }
+  if (state.reportId && state.auditId === req.params.id) {
+    return res.redirect(`/report?id=${state.reportId}`);
+  }
+  // Fallback: just serve the app
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
 // Report page — ?id=123 (DB) or ?site=hostname (filesystem fallback)
 app.get('/report', async (req: Request, res: Response) => {
   const id = req.query.id ? parseInt(req.query.id as string, 10) : null;
@@ -223,16 +242,19 @@ app.post('/api/audit/start', (req: Request, res: Response) => {
     }
   }
 
+  const auditId = randomUUID().slice(0, 8); // short 8-char ID
   state.running   = true;
   state.phase     = 'crawling';
   state.startedAt = new Date().toISOString();
   state.completedAt = null;
   state.lastError = null;
   state.targetUrl = targetUrl ?? null;
+  state.auditId   = auditId;
+  state.reportId  = null;
   state.log       = [];
   persistState();
 
-  res.json({ started: true });
+  res.json({ started: true, auditId });
 
   runAudit(targetUrl);
 });
@@ -276,6 +298,7 @@ function runAudit(targetUrl?: string) {
             const hostname = targetUrl
               ? (() => { try { return new URL(targetUrl).hostname; } catch { return 'cibil.com'; } })()
               : 'www.cibil.com';
+            state.reportId = null; // will be set below
             savedId = await saveAudit({
               targetUrl:       targetUrl ?? 'https://www.cibil.com',
               hostname,
@@ -288,6 +311,7 @@ function runAudit(targetUrl?: string) {
               minor:           meta.minor ?? 0,
               reportHtml:      html,
             });
+            state.reportId = savedId;
             push('log', `Report saved to database (id: ${savedId})`, { phase: 'complete' });
           }
         } catch (dbErr) {

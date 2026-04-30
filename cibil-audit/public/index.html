@@ -721,6 +721,8 @@ function applyState(d){
     if(phase === 'complete'){
       setBadge('complete');
       fetch('/api/reports').then(r=>r.json()).then(renderReports);
+      // If report was saved to DB, update URL to the permanent report link
+      if(d.reportId) window.history.replaceState(null,'',`/report?id=${d.reportId}`);
     }
     if(phase === 'error' && d.lastError){
       appendLog('✗ ' + d.lastError, 'error');
@@ -775,6 +777,8 @@ document.getElementById('btn-run').addEventListener('click', ()=>{
     .then(r=>r.json())
     .then(d=>{
       if(d.error){ appendLog(d.error,'error'); setButton(false); isRunning=false; setBadge('error'); return; }
+      // Navigate to unique audit URL so progress page is shareable
+      if(d.auditId) window.history.replaceState(null,'',`/audit/${d.auditId}`);
       startPolling();
     })
     .catch(e=>{ appendLog('Connection error: '+e.message,'error'); setButton(false); isRunning=false; });

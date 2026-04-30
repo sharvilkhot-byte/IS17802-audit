@@ -63,10 +63,6 @@ export function clearCheckpoint(outputDir: string) {
 export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> {
   const results: PageAuditResult[] = [];
 
-  // Ensure screenshots directory exists
-  const screenshotDir = path.join(config.outputDir, 'screenshots');
-  fs.mkdirSync(screenshotDir, { recursive: true });
-
   // Load checkpoint — resume from where a previous crashed audit left off
   const checkpoint = loadCheckpoint(config.outputDir);
   const resuming = Object.keys(checkpoint).length > 0;
@@ -106,7 +102,7 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
         pagesSinceRestart = 0;
       }
 
-      const result = await auditPage(browser, pageConfig, config, screenshotDir);
+      const result = await auditPage(browser, pageConfig, config);
       results.push(result);
       pagesSinceRestart++;
 
@@ -131,7 +127,6 @@ async function auditPage(
   browser: Browser,
   pageConfig: PageConfig,
   config: AuditConfig,
-  screenshotDir: string,
 ): Promise<PageAuditResult> {
   const context = await browser.newContext({
     viewport: config.viewport,
@@ -175,9 +170,6 @@ async function auditPage(
     // Get page title
     pageTitle = await page.title();
 
-    // Take screenshot — use viewport-only (not fullPage) to avoid GPU memory exhaustion on large pages
-    const screenshotPath = path.join(screenshotDir, `${sanitizeFilename(pageConfig.name)}.png`);
-    await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
 
     // ── Run axe-core ──────────────────────────────────────────────────────
     const axeResults = await new AxeBuilder({ page })
@@ -298,7 +290,7 @@ async function auditPage(
     passes: 0,
     pageTitle,
     loadTimeMs,
-    screenshotPath: path.join('screenshots', `${sanitizeFilename(pageConfig.name)}.png`),
+    screenshotPath: '',
   };
 }
 
