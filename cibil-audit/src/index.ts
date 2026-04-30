@@ -1,4 +1,4 @@
-import { runAudit } from './runner';
+import { runAudit, clearCheckpoint } from './runner';
 import { generateHTMLReport } from './reporter/htmlReporter';
 import { generateCSVReport } from './reporter/csvReporter';
 import { generateJSONReport } from './reporter/jsonReporter';
@@ -75,9 +75,9 @@ async function main(): Promise<void> {
   };
 
   // Generate reports
-  const htmlPath = generateHTMLReport(report, config.outputDir);
-  const csvPath = generateCSVReport(report, config.outputDir);
-  const jsonPath = generateJSONReport(report, config.outputDir);
+  const htmlPath = generateHTMLReport(report, auditConfig.outputDir);
+  const csvPath = generateCSVReport(report, auditConfig.outputDir);
+  const jsonPath = generateJSONReport(report, auditConfig.outputDir);
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
@@ -102,6 +102,9 @@ async function main(): Promise<void> {
   console.log(`  HTML   : ${path.basename(htmlPath)}`);
   console.log(`  CSV    : ${path.basename(csvPath)}`);
   console.log(`  JSON   : ${path.basename(jsonPath)}`);
+  // Clear checkpoint — audit completed successfully, no need to resume
+  clearCheckpoint(auditConfig.outputDir);
+
   console.log(`\nTime elapsed: ${elapsed}s`);
   console.log(`\nNOTE: Automated tools detect ~30-40% of issues.`);
   console.log(`Manual testing with NVDA/VoiceOver is required for full IS 17802 conformance.\n`);

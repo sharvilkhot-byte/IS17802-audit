@@ -36,6 +36,30 @@ function launchBrowser(headless: boolean) {
   });
 }
 
+const CHECKPOINT_FILE = (outputDir: string) => path.join(outputDir, '.audit-checkpoint.json');
+
+function loadCheckpoint(outputDir: string): Record<string, PageAuditResult> {
+  try {
+    const file = CHECKPOINT_FILE(outputDir);
+    if (!fs.existsSync(file)) return {};
+    const raw = fs.readFileSync(file, 'utf-8').trim();
+    if (!raw || !raw.startsWith('{')) return {};
+    return JSON.parse(raw);
+  } catch { return {}; }
+}
+
+function saveCheckpoint(outputDir: string, results: Record<string, PageAuditResult>) {
+  try {
+    const tmp = CHECKPOINT_FILE(outputDir) + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(results), 'utf-8');
+    fs.renameSync(tmp, CHECKPOINT_FILE(outputDir));
+  } catch { /* non-fatal */ }
+}
+
+export function clearCheckpoint(outputDir: string) {
+  try { fs.unlinkSync(CHECKPOINT_FILE(outputDir)); } catch { /* already gone */ }
+}
+
 export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> {
   const results: PageAuditResult[] = [];
 
@@ -43,11 +67,20 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
   const screenshotDir = path.join(config.outputDir, 'screenshots');
   fs.mkdirSync(screenshotDir, { recursive: true });
 
+  // Load checkpoint — resume from where a previous crashed audit left off
+  const checkpoint = loadCheckpoint(config.outputDir);
+  const resuming = Object.keys(checkpoint).length > 0;
+
   console.log(`\n${'='.repeat(60)}`);
   console.log('  IS 17802 Accessibility Audit — CIBIL Website');
   console.log(`${'='.repeat(60)}\n`);
   console.log(`Mode: ${config.headless ? 'Headless' : 'Visible browser'}`);
-  console.log(`Pages to audit: ${config.pages.length}\n`);
+  console.log(`Pages to audit: ${config.pages.length}`);
+  if (resuming) {
+    console.log(`Resuming from checkpoint — ${Object.keys(checkpoint).length} pages already done\n`);
+  } else {
+    console.log('');
+  }
 
   let browser = await launchBrowser(config.headless);
   let pagesSinceRestart = 0;
@@ -56,6 +89,13 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
     for (const pageConfig of config.pages) {
       if (pageConfig.requiresAuth) {
         console.log(`⚠  Skipping "${pageConfig.name}" — requires authentication`);
+        continue;
+      }
+
+      // Resume: use checkpointed result if this page was already audited
+      if (checkpoint[pageConfig.url]) {
+        results.push(checkpoint[pageConfig.url]);
+        process.stdout.write(`  ↩ ${pageConfig.name} (restored from checkpoint)\n`);
         continue;
       }
 
@@ -69,6 +109,10 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
       const result = await auditPage(browser, pageConfig, config, screenshotDir);
       results.push(result);
       pagesSinceRestart++;
+
+      // Save to checkpoint immediately after each page
+      checkpoint[pageConfig.url] = result;
+      saveCheckpoint(config.outputDir, checkpoint);
 
       const criticalCount = result.violations.filter(v => v.impact === 'critical').length;
       const seriousCount = result.violations.filter(v => v.impact === 'serious').length;
