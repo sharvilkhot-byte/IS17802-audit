@@ -13,6 +13,29 @@ function nextId(): string {
   return `A${String(++issueCounter).padStart(4, '0')}`;
 }
 
+// Restart browser every N pages to prevent GPU/memory accumulation crashes
+const BROWSER_RESTART_INTERVAL = 50;
+
+function launchBrowser(headless: boolean) {
+  return chromium.launch({
+    headless,
+    args: [
+      '--disable-web-security',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-gpu',                        // prevents GPU process crashes
+      '--disable-software-rasterizer',
+      '--disable-dev-shm-usage',              // use /tmp instead of /dev/shm
+      '--disable-background-networking',
+      '--disable-extensions',
+      '--disable-default-apps',
+      '--mute-audio',
+      '--no-first-run',
+      '--js-flags=--max-old-space-size=512',  // cap JS heap per browser instance
+    ],
+  });
+}
+
 export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> {
   const results: PageAuditResult[] = [];
 
@@ -20,20 +43,14 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
   const screenshotDir = path.join(config.outputDir, 'screenshots');
   fs.mkdirSync(screenshotDir, { recursive: true });
 
-  const browser = await chromium.launch({
-    headless: config.headless,
-    args: [
-      '--disable-web-security',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-    ],
-  });
-
   console.log(`\n${'='.repeat(60)}`);
   console.log('  IS 17802 Accessibility Audit — CIBIL Website');
   console.log(`${'='.repeat(60)}\n`);
   console.log(`Mode: ${config.headless ? 'Headless' : 'Visible browser'}`);
   console.log(`Pages to audit: ${config.pages.length}\n`);
+
+  let browser = await launchBrowser(config.headless);
+  let pagesSinceRestart = 0;
 
   try {
     for (const pageConfig of config.pages) {
@@ -42,8 +59,16 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
         continue;
       }
 
+      // Restart browser periodically to clear accumulated memory
+      if (pagesSinceRestart > 0 && pagesSinceRestart % BROWSER_RESTART_INTERVAL === 0) {
+        await browser.close().catch(() => {});
+        browser = await launchBrowser(config.headless);
+        pagesSinceRestart = 0;
+      }
+
       const result = await auditPage(browser, pageConfig, config, screenshotDir);
       results.push(result);
+      pagesSinceRestart++;
 
       const criticalCount = result.violations.filter(v => v.impact === 'critical').length;
       const seriousCount = result.violations.filter(v => v.impact === 'serious').length;
@@ -52,7 +77,7 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
       console.log(`    Violations: ${result.violations.length} (Critical: ${criticalCount}, Serious: ${seriousCount})\n`);
     }
   } finally {
-    await browser.close();
+    await browser.close().catch(() => {});
   }
 
   return results;
@@ -106,9 +131,9 @@ async function auditPage(
     // Get page title
     pageTitle = await page.title();
 
-    // Take screenshot
+    // Take screenshot — use viewport-only (not fullPage) to avoid GPU memory exhaustion on large pages
     const screenshotPath = path.join(screenshotDir, `${sanitizeFilename(pageConfig.name)}.png`);
-    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
 
     // ── Run axe-core ──────────────────────────────────────────────────────
     const axeResults = await new AxeBuilder({ page })
