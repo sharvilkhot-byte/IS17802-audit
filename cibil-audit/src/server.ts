@@ -146,15 +146,15 @@ app.get('/', (_req: Request, res: Response) => {
 
 // Unique audit progress page — /audit/:id
 app.get('/audit/:id', (req: Request, res: Response) => {
-  // If this is the current audit, serve the app (it'll poll /api/status)
-  // If it's an old audit ID and we have a reportId, redirect to report
   if (state.auditId === req.params.id) {
+    // Audit is complete — redirect straight to the report
+    if (state.phase === 'complete' && state.reportId) {
+      return res.redirect(`/report?id=${state.reportId}`);
+    }
+    // Audit still in progress — serve the progress UI
     return res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
   }
-  if (state.reportId && state.auditId === req.params.id) {
-    return res.redirect(`/report?id=${state.reportId}`);
-  }
-  // Fallback: just serve the app
+  // Unknown/old audit ID — serve the app (will show current state)
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
