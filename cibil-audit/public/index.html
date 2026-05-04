@@ -395,11 +395,11 @@ footer{
       </button>
     </div>
     <div class="input-row-below">
-      <span class="input-hint">Leave blank to audit <code>cibil.com</code> · or pick a quick example</span>
+      <span class="input-hint">Enter any website URL to audit · or pick a quick example</span>
       <div class="quick-links">
-        <span class="quick-link" onclick="setUrl('https://www.cibil.com')">cibil.com</span>
         <span class="quick-link" onclick="setUrl('https://www.hdfcbank.com')">hdfcbank.com</span>
         <span class="quick-link" onclick="setUrl('https://www.iciciprulife.com')">iciciprulife.com</span>
+        <span class="quick-link" onclick="setUrl('https://www.sbi.co.in')">sbi.co.in</span>
       </div>
     </div>
   </div>
@@ -571,7 +571,7 @@ function setNavStatus(phase){
 function showProgress(show){ document.getElementById('progress-card').style.display = show?'':'none'; }
 
 function setProgressTitle(targetUrl, startedAt){
-  let host = 'cibil.com';
+  let host = targetUrl || 'the target site';
   try{ host = new URL(targetUrl).hostname; }catch{}
   q('#progress-title').textContent = 'Auditing ' + host;
   if(startedAt) q('#progress-sub').textContent = 'Started at ' + new Date(startedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -639,7 +639,7 @@ function renderReports(reports){
   if(!reports||reports.length===0){ sec.innerHTML=''; return; }
 
   const rows = reports.map(r=>{
-    let host='cibil.com', origin='';
+    let host='', origin='';
     try{ const u=new URL(r.targetUrl||r.target_url); host=u.hostname; origin=u.origin; }catch{}
     const date = (r.auditedAt||r.audited_at)
       ? new Date(r.auditedAt||r.audited_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
@@ -705,7 +705,7 @@ function applyState(d){
     setStep(phase);
     setBadge(phase);
     if(d.targetUrl || d.startedAt)
-      setProgressTitle(d.targetUrl || 'https://www.cibil.com', d.startedAt);
+      setProgressTitle(d.targetUrl || '', d.startedAt);
 
     // Sync log — only append new lines since last poll
     if(d.log && d.log.length > lastLogCount){
@@ -768,8 +768,8 @@ document.getElementById('btn-run').addEventListener('click', ()=>{
   document.getElementById('log-wrap').innerHTML='';
   lastLogCount = 0; lastPhase = null;
   showProgress(true);
-  setProgressTitle(body.url||'https://www.cibil.com', new Date().toISOString());
-  appendLog('Initialising audit for '+(body.url||'www.cibil.com')+'…','phase');
+  setProgressTitle(body.url||'', new Date().toISOString());
+  appendLog('Initialising audit for '+(body.url||'the target site')+'…','phase');
   setButton(true); setProgress('crawling'); setStep('crawling'); setBadge('running');
   isRunning=true;
 
