@@ -179,7 +179,16 @@ app.get('/report', async (req: Request, res: Response) => {
 // Current state
 app.get('/api/status', (_req: Request, res: Response) => {
   const dir = resultsDirFor(state.targetUrl);
-  res.json({ ...state, meta: getReportMeta(dir) });
+  // storageType tells the frontend whether reports will survive a restart.
+  // 'database'   — DATABASE_URL is set, reports stored in PostgreSQL (persistent)
+  // 'volume'     — RAILWAY_VOLUME_MOUNT_PATH is set, filesystem is a mounted volume (persistent)
+  // 'filesystem' — no persistent storage configured, reports lost on container restart
+  const storageType = hasDb()
+    ? 'database'
+    : process.env.RAILWAY_VOLUME_MOUNT_PATH
+      ? 'volume'
+      : 'filesystem';
+  res.json({ ...state, meta: getReportMeta(dir), storageType });
 });
 
 // All completed reports

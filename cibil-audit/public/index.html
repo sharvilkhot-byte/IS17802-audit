@@ -411,8 +411,8 @@ footer{
   <div class="notice" id="storage-notice" style="display:none">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     <div>
-      <strong>Reports are stored in container memory.</strong>
-      Add a <a href="https://docs.railway.app/reference/volumes" target="_blank">Railway Volume</a> at <code style="background:rgba(0,0,0,.2);padding:1px 5px;border-radius:3px">/app/audit-results</code> to persist reports across restarts.
+      <strong>Reports will be lost on restart.</strong>
+      Add a <a href="https://docs.railway.app/reference/volumes" target="_blank">Railway Volume</a> mounted at <code style="background:rgba(0,0,0,.2);padding:1px 5px;border-radius:3px">/app/audit-results</code>, or set <code style="background:rgba(0,0,0,.2);padding:1px 5px;border-radius:3px">DATABASE_URL</code> to persist reports permanently.
     </div>
   </div>
 
@@ -788,7 +788,8 @@ document.getElementById('btn-run').addEventListener('click', ()=>{
 fetch('/api/status').then(r=>r.json()).then(d=>{
   applyState(d);
   if(d.running) startPolling();
-  if(location.hostname!=='localhost'&&location.hostname!=='127.0.0.1')
+  // Only warn when storage is genuinely ephemeral — not when DB or volume is configured
+  if(d.storageType === 'filesystem')
     document.getElementById('storage-notice').style.display='flex';
 });
 fetch('/api/reports').then(r=>r.json()).then(renderReports);
