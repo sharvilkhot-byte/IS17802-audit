@@ -757,16 +757,10 @@ function buildHTML(report: AuditReport): string {
 
 
 
-  // Pre-render all violations as static HTML — enables direct file:// opening, no XHR needed
-  const violationHTML = allViolations.map(slimViolation).map((v, i) => {
-    const wcagUrl = `https://www.w3.org/WAI/WCAG21/Understanding/${(v.wcag || '').replace(/\./g, '-')}`;
-    const nodeHtml = v.nodes.map(n =>
-      `<div class="code"><div class="codet">Affected element</div><div class="codeh">${e(n.html)}</div><div class="codes">${e(n.summary)}</div></div>`
-    ).join('');
-    const searchKey = e((v.desc + ' ' + v.clause + ' ' + v.title + ' ' + v.page + ' ' + v.help).toLowerCase().substring(0, 600));
-    const srcCls = v.source === 'custom' ? ' cx' : v.source === 'ibm' ? ' ibm' : '';
-    return `<div class="vc" data-impact="${e(v.impact)}" data-principle="${e(v.principle)}" data-clause="${e(v.clause)}" data-page="${e(v.page)}" data-desc="${e(v.desc.toLowerCase().substring(0,100))}" data-search="${searchKey}"><div class="vh" data-vid="v${i}" role="button" tabindex="0" aria-expanded="false"><span class="vimp ${e(v.impact)}">${e(v.impact)}</span><span class="vcl">IS&nbsp;${e(v.clause)}</span><span class="vd" title="${e(v.desc)}">${e(v.desc)}</span><span class="vpg" title="${e(v.page)}">${e(v.page)}</span><span class="vsrc${srcCls}">${e(v.source)}</span><span class="varr" data-arr="v${i}">&#9656;</span></div><div class="vb" id="vb-v${i}"><dl class="vdl"><dt>Clause</dt><dd>IS 17802 / ${e(v.clause)} — WCAG ${e(v.wcag)} (Level ${e(v.level)})</dd><dt>Title</dt><dd>${e(v.title)}</dd><dt>Principle</dt><dd>${e(v.principle)}</dd><dt>Impact</dt><dd>${e(v.impact)}</dd><dt>Page</dt><dd><a href="${e(v.url)}" target="_blank" rel="noopener">${e(v.page)}</a></dd><dt>Fix</dt><dd>${e(v.help)}</dd><dt>Reference</dt><dd><a href="${e(wcagUrl)}" target="_blank" rel="noopener">WCAG Understanding ${e(v.wcag)} ↗</a></dd></dl>${nodeHtml}</div></div>`;
-  }).join('');
+  // Embed violations as compact JSON — rendered on-demand in the browser (50 per page).
+  // This replaces pre-rendering all violations as HTML strings (which caused OOM hangs
+  // for large audits with 50k+ violations: 75-200 MB of string concatenation in Node).
+  const violationsJson = safeJson(allViolations.map(slimViolation));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1335,7 +1329,7 @@ footer strong{color:rgba(255,255,255,.85)}
       </div>
       <span id="vcnt"></span>
     </div>
-    <div id="vlist">${violationHTML}</div>
+    <div id="vlist"></div>
     <div id="vempty" class="empty" style="display:none"><div class="empty-ico">🔎</div><div class="empty-t">No violations match your filters</div></div>
     <div id="pg"></div>
   </div>
@@ -1384,70 +1378,105 @@ document.querySelectorAll('#ptbl th').forEach(function(th){
 });
 </script>
 
+<script>var VD={violations:${violationsJson}};</script>
 <script>
-/* ── 3. VIOLATIONS TAB — DOM-based, no XHR, works with file:// ── */
+/* ── 3. VIOLATIONS TAB — data-driven, renders 50 items per page on demand ── */
 var PAGE_SIZE = 50;
 var curPage = 1;
-var filtered = [];
-var allEls = null;
+var allData = null;   // slim violation objects from VD
+var filtered = [];    // currently filtered+sorted data objects
 var initialized = false;
 var impOrd = {critical:0,serious:1,moderate:2,minor:3};
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+function makeViolationEl(v){
+  var wcagUrl='https://www.w3.org/WAI/WCAG21/Understanding/'+(v.wcag||'').replace(/\./g,'-');
+  var nodeHtml=(v.nodes||[]).map(function(n){
+    return '<div class="code"><div class="codet">Affected element</div><div class="codeh">'+esc(n.html)+'</div><div class="codes">'+esc(n.summary)+'</div></div>';
+  }).join('');
+  var srcCls=v.source==='custom'?' cx':v.source==='ibm'?' ibm':'';
+  var vid='v'+v._i;
+  var div=document.createElement('div');
+  div.className='vc vis';
+  div.setAttribute('data-impact',v.impact||'');
+  div.setAttribute('data-principle',v.principle||'');
+  div.setAttribute('data-clause',v.clause||'');
+  div.setAttribute('data-page',v.page||'');
+  div.innerHTML='<div class="vh" data-vid="'+vid+'" role="button" tabindex="0" aria-expanded="false">'
+    +'<span class="vimp '+esc(v.impact)+'">'+esc(v.impact)+'</span>'
+    +'<span class="vcl">IS&nbsp;'+esc(v.clause)+'</span>'
+    +'<span class="vd" title="'+esc(v.desc)+'">'+esc(v.desc)+'</span>'
+    +'<span class="vpg" title="'+esc(v.page)+'">'+esc(v.page)+'</span>'
+    +'<span class="vsrc'+srcCls+'">'+esc(v.source)+'</span>'
+    +'<span class="varr" data-arr="'+vid+'">&#9656;</span></div>'
+    +'<div class="vb" id="vb-'+vid+'"><dl class="vdl">'
+    +'<dt>Clause</dt><dd>IS 17802 / '+esc(v.clause)+' — WCAG '+esc(v.wcag)+' (Level '+esc(v.level)+')</dd>'
+    +'<dt>Title</dt><dd>'+esc(v.title)+'</dd>'
+    +'<dt>Principle</dt><dd>'+esc(v.principle)+'</dd>'
+    +'<dt>Impact</dt><dd>'+esc(v.impact)+'</dd>'
+    +'<dt>Page</dt><dd><a href="'+esc(v.url)+'" target="_blank" rel="noopener">'+esc(v.page)+'</a></dd>'
+    +'<dt>Fix</dt><dd>'+esc(v.help)+'</dd>'
+    +'<dt>Reference</dt><dd><a href="'+esc(wcagUrl)+'" target="_blank" rel="noopener">WCAG Understanding '+esc(v.wcag)+' ↗</a></dd>'
+    +'</dl>'+nodeHtml+'</div>';
+  return div;
+}
+
 function initViolations(){
   if(initialized) return;
-  allEls = Array.from(document.querySelectorAll('#vlist .vc'));
-  initialized = true;
+  allData=(window.VD&&window.VD.violations?window.VD.violations:[]).map(function(v,i){
+    v._i=i;
+    v._sk=(v.desc+' '+v.clause+' '+v.title+' '+v.page+' '+v.help).toLowerCase();
+    return v;
+  });
+  initialized=true;
   applyFilters();
 }
 
-
 function getFilters(){
-  var activeF = document.querySelector('.fb.on');
+  var activeF=document.querySelector('.fb.on');
   return {
-    impact: (activeF ? activeF.getAttribute('data-f') : 'all') || 'all',
-    principle: document.getElementById('pfil').value,
-    search: document.getElementById('srch').value.toLowerCase().trim(),
-    sort: document.getElementById('psort').value
+    impact:(activeF?activeF.getAttribute('data-f'):'all')||'all',
+    principle:document.getElementById('pfil').value,
+    search:document.getElementById('srch').value.toLowerCase().trim(),
+    sort:document.getElementById('psort').value
   };
 }
 
 function applyFilters(){
   if(!initialized) return;
-  var f = getFilters();
-  filtered = allEls.filter(function(el){
-    if(f.impact !== 'all' && el.dataset.impact !== f.impact) return false;
-    if(f.principle && el.dataset.principle !== f.principle) return false;
-    if(f.search && (el.dataset.search||'').indexOf(f.search) === -1) return false;
+  var f=getFilters();
+  filtered=allData.filter(function(v){
+    if(f.impact!=='all'&&v.impact!==f.impact) return false;
+    if(f.principle&&v.principle!==f.principle) return false;
+    if(f.search&&v._sk.indexOf(f.search)===-1) return false;
     return true;
   });
   filtered.sort(function(a,b){
-    if(f.sort==='impact') return (impOrd[a.dataset.impact]||0)-(impOrd[b.dataset.impact]||0);
-    if(f.sort==='clause') return (a.dataset.clause||'').localeCompare(b.dataset.clause||'');
-    if(f.sort==='page')   return (a.dataset.page||'').localeCompare(b.dataset.page||'');
-    if(f.sort==='desc')   return (a.dataset.desc||'').localeCompare(b.dataset.desc||'');
+    if(f.sort==='impact') return (impOrd[a.impact]||0)-(impOrd[b.impact]||0);
+    if(f.sort==='clause') return (a.clause||'').localeCompare(b.clause||'');
+    if(f.sort==='page')   return (a.page||'').localeCompare(b.page||'');
+    if(f.sort==='desc')   return (a.desc||'').localeCompare(b.desc||'');
     return 0;
   });
-  curPage = 1;
+  curPage=1;
   render();
 }
 
 function render(){
-  if(!allEls) return;
-  var vlist = document.getElementById('vlist');
-  var emptyEl = document.getElementById('vempty');
-  var cnt = document.getElementById('vcnt');
-  var pgEl = document.getElementById('pg');
+  if(!allData) return;
+  var vlist=document.getElementById('vlist');
+  var emptyEl=document.getElementById('vempty');
+  var cnt=document.getElementById('vcnt');
+  var pgEl=document.getElementById('pg');
 
-  // Hide all
-  allEls.forEach(function(el){ el.classList.remove('vis'); });
+  vlist.innerHTML=''; // clear previous page
 
-  var start = (curPage-1)*PAGE_SIZE;
-  var slice = filtered.slice(start, start+PAGE_SIZE);
-  var totalPg = Math.ceil(filtered.length/PAGE_SIZE);
+  var start=(curPage-1)*PAGE_SIZE;
+  var slice=filtered.slice(start,start+PAGE_SIZE);
+  var totalPg=Math.ceil(filtered.length/PAGE_SIZE);
 
-  if(cnt) cnt.textContent = filtered.length.toLocaleString()+' violation'+(filtered.length!==1?'s':'')+' shown';
+  if(cnt) cnt.textContent=filtered.length.toLocaleString()+' violation'+(filtered.length!==1?'s':'')+' shown';
 
   if(!slice.length){
     if(emptyEl) emptyEl.style.display='block';
@@ -1456,14 +1485,14 @@ function render(){
   }
   if(emptyEl) emptyEl.style.display='none';
 
-  // Move to end in sorted order and show
-  slice.forEach(function(el){ vlist.appendChild(el); el.classList.add('vis'); });
+  var frag=document.createDocumentFragment();
+  slice.forEach(function(v){ frag.appendChild(makeViolationEl(v)); });
+  vlist.appendChild(frag);
 
-  // Pagination
   if(!pgEl) return;
   if(totalPg<=1){ pgEl.innerHTML=''; return; }
   var html='<button class="pgb" id="pgp"'+(curPage===1?' disabled':'')+'>← Prev</button>';
-  var s=Math.max(1,curPage-2), en=Math.min(totalPg,curPage+2);
+  var s=Math.max(1,curPage-2),en=Math.min(totalPg,curPage+2);
   if(s>1) html+='<button class="pgb" data-pg="1">1</button>'+(s>2?'<span>…</span>':'');
   for(var i=s;i<=en;i++) html+='<button class="pgb'+(i===curPage?' on':'')+'" data-pg="'+i+'">'+i+'</button>';
   if(en<totalPg) html+=(en<totalPg-1?'<span>…</span>':'')+'<button class="pgb" data-pg="'+totalPg+'">'+totalPg+'</button>';
@@ -1474,43 +1503,43 @@ function render(){
 
 /* Init violations on first tab click */
 document.querySelectorAll('.tab').forEach(function(t){
-  t.addEventListener('click', function(){
+  t.addEventListener('click',function(){
     if(t.getAttribute('data-tab')==='violations') initViolations();
   });
 });
 
-/* Event delegation */
-document.addEventListener('click', function(ev){
-  var hdr = ev.target.closest('[data-vid]');
+/* Event delegation — works with dynamically created elements */
+document.addEventListener('click',function(ev){
+  var hdr=ev.target.closest('[data-vid]');
   if(hdr){
-    var id = hdr.getAttribute('data-vid');
-    var body = document.getElementById('vb-'+id);
-    var arr = document.querySelector('[data-arr="'+id+'"]');
-    if(body){ var op = body.classList.toggle('op'); hdr.setAttribute('aria-expanded',String(op)); if(arr) arr.classList.toggle('op',op); }
+    var id=hdr.getAttribute('data-vid');
+    var body=document.getElementById('vb-'+id);
+    var arr=document.querySelector('[data-arr="'+id+'"]');
+    if(body){ var op=body.classList.toggle('op'); hdr.setAttribute('aria-expanded',String(op)); if(arr) arr.classList.toggle('op',op); }
     return;
   }
-  var pg = ev.target.closest('[data-pg]');
-  if(pg && initialized){ curPage=parseInt(pg.getAttribute('data-pg')); render(); document.getElementById('panel-violations').scrollIntoView({behavior:'smooth'}); return; }
-  if(ev.target.id==='pgp' && curPage>1 && initialized){ curPage--; render(); return; }
-  if(ev.target.id==='pgn' && initialized){ curPage++; render(); return; }
+  var pg=ev.target.closest('[data-pg]');
+  if(pg&&initialized){ curPage=parseInt(pg.getAttribute('data-pg')); render(); document.getElementById('panel-violations').scrollIntoView({behavior:'smooth'}); return; }
+  if(ev.target.id==='pgp'&&curPage>1&&initialized){ curPage--; render(); return; }
+  if(ev.target.id==='pgn'&&initialized){ curPage++; render(); return; }
 });
-document.addEventListener('keydown', function(ev){
-  if((ev.key==='Enter'||ev.key===' ') && ev.target.closest('[data-vid]')){ ev.preventDefault(); ev.target.closest('[data-vid]').click(); }
+document.addEventListener('keydown',function(ev){
+  if((ev.key==='Enter'||ev.key===' ')&&ev.target.closest('[data-vid]')){ ev.preventDefault(); ev.target.closest('[data-vid]').click(); }
 });
 
 document.querySelectorAll('.fb').forEach(function(b){
-  b.addEventListener('click', function(){
+  b.addEventListener('click',function(){
     document.querySelectorAll('.fb').forEach(function(x){ x.classList.remove('on'); });
     b.classList.add('on');
     if(initialized) applyFilters();
   });
 });
-document.getElementById('pfil').addEventListener('change', function(){ if(initialized) applyFilters(); });
-document.getElementById('psort').addEventListener('change', function(){ if(initialized) applyFilters(); });
+document.getElementById('pfil').addEventListener('change',function(){ if(initialized) applyFilters(); });
+document.getElementById('psort').addEventListener('change',function(){ if(initialized) applyFilters(); });
 var st;
-document.getElementById('srch').addEventListener('input', function(){ clearTimeout(st); st=setTimeout(function(){ if(initialized) applyFilters(); },200); });
+document.getElementById('srch').addEventListener('input',function(){ clearTimeout(st); st=setTimeout(function(){ if(initialized) applyFilters(); },200); });
 
-document.getElementById('exAll').addEventListener('click', function(){
+document.getElementById('exAll').addEventListener('click',function(){
   document.querySelectorAll('.vb').forEach(function(b){ b.classList.add('op'); });
   document.querySelectorAll('.varr').forEach(function(a){ a.classList.add('op'); });
   document.querySelectorAll('[data-vid]').forEach(function(h){ h.setAttribute('aria-expanded','true'); });
