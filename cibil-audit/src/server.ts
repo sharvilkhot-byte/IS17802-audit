@@ -262,7 +262,7 @@ app.post('/api/audit/start', (req: Request, res: Response) => {
 // ─── Audit runner ─────────────────────────────────────────────────────────────
 
 function runAudit(targetUrl?: string) {
-  const label = targetUrl ? targetUrl : 'CIBIL website';
+  const label = targetUrl ?? 'the target site';
   push('phase', `Crawling ${label} for URLs…`, { phase: 'crawling', targetUrl: targetUrl ?? null });
   state.phase = 'crawling';
 
@@ -295,12 +295,10 @@ function runAudit(targetUrl?: string) {
           const meta = getReportMeta(outputDir);
           const html = getReportFromFs(outputDir);
           if (meta && html) {
-            const hostname = targetUrl
-              ? (() => { try { return new URL(targetUrl).hostname; } catch { return 'cibil.com'; } })()
-              : 'www.cibil.com';
+            const hostname = (() => { try { return new URL(targetUrl ?? '').hostname; } catch { return 'unknown'; } })();
             state.reportId = null; // will be set below
             savedId = await saveAudit({
-              targetUrl:       targetUrl ?? 'https://www.cibil.com',
+              targetUrl:       targetUrl ?? meta.targetUrl ?? 'unknown',
               hostname,
               auditedAt:       meta.auditedAt ?? new Date().toISOString(),
               totalPages:      meta.totalPages ?? 0,

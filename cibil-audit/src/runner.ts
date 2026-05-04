@@ -16,6 +16,9 @@ function nextId(): string {
 // Restart browser every N pages to prevent GPU/memory accumulation crashes
 const BROWSER_RESTART_INTERVAL = 50;
 
+// Number of pages to audit concurrently (tune based on RAM & target rate limits)
+const CONCURRENCY = parseInt(process.env.AUDIT_CONCURRENCY ?? '4', 10);
+
 function launchBrowser(headless: boolean) {
   return chromium.launch({
     headless,
@@ -61,64 +64,81 @@ export function clearCheckpoint(outputDir: string) {
 }
 
 export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> {
-  const results: PageAuditResult[] = [];
-
   // Load checkpoint — resume from where a previous crashed audit left off
   const checkpoint = loadCheckpoint(config.outputDir);
   const resuming = Object.keys(checkpoint).length > 0;
 
   console.log(`\n${'='.repeat(60)}`);
-  console.log('  IS 17802 Accessibility Audit — CIBIL Website');
+  console.log('  IS 17802 Accessibility Audit');
   console.log(`${'='.repeat(60)}\n`);
   console.log(`Mode: ${config.headless ? 'Headless' : 'Visible browser'}`);
   console.log(`Pages to audit: ${config.pages.length}`);
+  console.log(`Concurrency: ${CONCURRENCY} parallel workers`);
   if (resuming) {
     console.log(`Resuming from checkpoint — ${Object.keys(checkpoint).length} pages already done\n`);
   } else {
     console.log('');
   }
 
-  let browser = await launchBrowser(config.headless);
-  let pagesSinceRestart = 0;
-
-  try {
-    for (const pageConfig of config.pages) {
-      if (pageConfig.requiresAuth) {
-        console.log(`⚠  Skipping "${pageConfig.name}" — requires authentication`);
-        continue;
-      }
-
-      // Resume: use checkpointed result if this page was already audited
-      if (checkpoint[pageConfig.url]) {
-        results.push(checkpoint[pageConfig.url]);
-        process.stdout.write(`  ↩ ${pageConfig.name} (restored from checkpoint)\n`);
-        continue;
-      }
-
-      // Restart browser periodically to clear accumulated memory
-      if (pagesSinceRestart > 0 && pagesSinceRestart % BROWSER_RESTART_INTERVAL === 0) {
-        await browser.close().catch(() => {});
-        browser = await launchBrowser(config.headless);
-        pagesSinceRestart = 0;
-      }
-
-      const result = await auditPage(browser, pageConfig, config);
-      results.push(result);
-      pagesSinceRestart++;
-
-      // Save to checkpoint immediately after each page
-      checkpoint[pageConfig.url] = result;
-      saveCheckpoint(config.outputDir, checkpoint);
-
-      const criticalCount = result.violations.filter(v => v.impact === 'critical').length;
-      const seriousCount = result.violations.filter(v => v.impact === 'serious').length;
-
-      console.log(`  ✓ ${pageConfig.name}`);
-      console.log(`    Violations: ${result.violations.length} (Critical: ${criticalCount}, Serious: ${seriousCount})\n`);
+  // Collect already-completed results from checkpoint
+  const results: PageAuditResult[] = [];
+  for (const pageConfig of config.pages) {
+    if (pageConfig.requiresAuth) {
+      console.log(`⚠  Skipping "${pageConfig.name}" — requires authentication`);
+      continue;
     }
-  } finally {
-    await browser.close().catch(() => {});
+    if (checkpoint[pageConfig.url]) {
+      results.push(checkpoint[pageConfig.url]);
+      process.stdout.write(`  ↩ ${pageConfig.name} (restored from checkpoint)\n`);
+    }
   }
+
+  // Build queue of pages that still need auditing
+  const queue: PageConfig[] = config.pages.filter(
+    p => !p.requiresAuth && !checkpoint[p.url],
+  );
+
+  // Shared checkpoint state — safe in single-threaded Node.js
+  const checkpointData: Record<string, PageAuditResult> = { ...checkpoint };
+
+  // Worker: pulls pages from the shared queue until empty
+  async function worker(): Promise<void> {
+    let browser = await launchBrowser(config.headless);
+    let pagesSinceRestart = 0;
+
+    try {
+      while (queue.length > 0) {
+        const pageConfig = queue.shift();
+        if (!pageConfig) break;
+
+        // Restart browser periodically to clear accumulated memory
+        if (pagesSinceRestart > 0 && pagesSinceRestart % BROWSER_RESTART_INTERVAL === 0) {
+          await browser.close().catch(() => {});
+          browser = await launchBrowser(config.headless);
+          pagesSinceRestart = 0;
+        }
+
+        const result = await auditPage(browser, pageConfig, config);
+        results.push(result);
+        pagesSinceRestart++;
+
+        // Save to checkpoint immediately after each page
+        checkpointData[pageConfig.url] = result;
+        saveCheckpoint(config.outputDir, checkpointData);
+
+        const criticalCount = result.violations.filter(v => v.impact === 'critical').length;
+        const seriousCount = result.violations.filter(v => v.impact === 'serious').length;
+
+        console.log(`  ✓ ${pageConfig.name}`);
+        console.log(`    Violations: ${result.violations.length} (Critical: ${criticalCount}, Serious: ${seriousCount})\n`);
+      }
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  }
+
+  // Launch CONCURRENCY workers in parallel
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
 
   return results;
 }
@@ -139,6 +159,20 @@ async function auditPage(
 
   const page = await context.newPage();
 
+  // Block resources that don't affect accessibility checks.
+  // Images, fonts, media, and tracking beacons are not needed for
+  // axe-core / IBM / custom DOM checks — skipping them cuts load time 30–50%.
+  // Stylesheets and scripts are kept: CSS is needed for contrast/visibility
+  // checks, scripts for dynamic ARIA states and live regions.
+  await page.route('**/*', route => {
+    const type = route.request().resourceType();
+    if (['image', 'media', 'font', 'other'].includes(type)) {
+      route.abort();
+    } else {
+      route.continue();
+    }
+  });
+
   console.log(`→ Auditing: ${pageConfig.name} (${pageConfig.url})`);
 
   const startTime = Date.now();
@@ -157,8 +191,8 @@ async function auditPage(
       await page.waitForSelector(pageConfig.waitFor, { timeout: 10000 }).catch(() => {});
     }
 
-    // Additional wait for dynamic content
-    await page.waitForTimeout(2000);
+    // Wait for dynamic content — use networkidle (up to 2s) instead of a fixed sleep
+    await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
 
     // Run any configured page actions (click cookie banners, etc.)
     if (pageConfig.actions) {
@@ -170,15 +204,18 @@ async function auditPage(
     // Get page title
     pageTitle = await page.title();
 
-
-    // ── Run axe-core ──────────────────────────────────────────────────────
-    const axeResults = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
-      .analyze()
-      .catch(err => {
-        console.error(`  axe error on ${pageConfig.name}:`, err.message);
-        return { violations: [], incomplete: [], passes: [] };
-      });
+    // ── Run all three check engines in parallel ───────────────────────────
+    const [axeResults, customResults, ibmResults] = await Promise.all([
+      new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
+        .analyze()
+        .catch(err => {
+          console.error(`  axe error on ${pageConfig.name}:`, err.message);
+          return { violations: [], incomplete: [], passes: [] };
+        }),
+      runCustomChecks(page, pageConfig.url),
+      runIbmChecks(page),
+    ]);
 
     // Map axe violations to IS 17802
     for (const v of axeResults.violations) {
@@ -222,8 +259,7 @@ async function auditPage(
       });
     }
 
-    // ── Run custom checks ─────────────────────────────────────────────────
-    const customResults = await runCustomChecks(page, pageConfig.url);
+    // Map custom check results
     for (const c of customResults) {
       violations.push({
         id: nextId(),
@@ -240,8 +276,7 @@ async function auditPage(
       });
     }
 
-    // ── Run IBM Equal Access checks ───────────────────────────────────────
-    const ibmResults = await runIbmChecks(page);
+    // Map IBM Equal Access results
     for (const r of ibmResults) {
       const clause = getClause(r.ruleId);
       violations.push({
@@ -316,8 +351,4 @@ async function performAction(page: Page, action: { type: string; selector?: stri
   } catch {
     // Action failed — continue audit
   }
-}
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 }

@@ -4,7 +4,7 @@ import path from 'path';
 const config: AuditConfig = {
   outputDir: process.env.OUTPUT_DIR ?? path.join(process.cwd(), 'audit-results'),
   coverageSourceDir: process.env.COVERAGE_SOURCE_DIR
-    ?? path.join(process.cwd(), 'audit-results', 'cibil-urls'),
+    ?? path.join(process.cwd(), 'audit-results', 'crawled-urls'),
   headless: process.env.HEADLESS === 'true',
   viewport: { width: 1280, height: 800 },
   timeout: 30000,

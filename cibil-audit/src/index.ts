@@ -32,7 +32,7 @@ function buildDynamicConfig(targetUrl: string): AuditConfig {
 async function main(): Promise<void> {
   const targetUrl = process.env.TARGET_URL;
   const auditConfig: AuditConfig = targetUrl ? buildDynamicConfig(targetUrl) : config;
-  const reportTargetUrl = targetUrl ?? 'https://www.cibil.com';
+  const reportTargetUrl = targetUrl ?? config.pages[0]?.url ?? 'unknown';
 
   // Ensure output directory exists
   fs.mkdirSync(auditConfig.outputDir, { recursive: true });
