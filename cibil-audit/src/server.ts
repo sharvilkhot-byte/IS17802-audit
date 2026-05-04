@@ -158,17 +158,23 @@ app.get('/audit/:id', (req: Request, res: Response) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-// Report page — ?id=123 (DB) or ?site=hostname (filesystem fallback)
+// Report page — ?id=123 (DB lookup for hostname → filesystem) or ?site=hostname
 app.get('/report', async (req: Request, res: Response) => {
   const id = req.query.id ? parseInt(req.query.id as string, 10) : null;
 
+  // If DB id provided, look up the hostname to find the right output directory
   if (id && hasDb()) {
-    const html = await getAuditHtml(id);
-    if (!html) return res.status(404).send('Report not found.');
-    return res.type('html').send(html);
+    const rows = await listAudits();
+    const row = rows.find(r => r.id === id);
+    if (row) {
+      const dir = path.join(BASE_RESULTS_DIR, row.hostname);
+      const html = getReportFromFs(dir) ?? getReportFromFs(BASE_RESULTS_DIR);
+      if (html) return res.type('html').send(html);
+    }
+    return res.status(404).send('Report not found.');
   }
 
-  // Filesystem fallback
+  // Filesystem fallback — ?site=hostname or default dir
   const site = req.query.site as string | undefined;
   const dir = site ? path.join(BASE_RESULTS_DIR, site) : BASE_RESULTS_DIR;
   const html = getReportFromFs(dir);
@@ -285,27 +291,25 @@ function runAudit(targetUrl?: string) {
     .then(() => {
       push('phase', 'Running IS 17802 accessibility audit on all pages…', { phase: 'auditing' });
       state.phase = 'auditing';
+      // index.js runs the full audit AND generates HTML/CSV/JSON reports itself —
+      // no separate report generation step needed.
       return runProcess('node', ['dist/src/index.js'], 'auditing', extraEnv);
-    })
-    .then(() => {
-      push('phase', 'Generating HTML report…', { phase: 'generating' });
-      state.phase = 'generating';
-      return runProcess('node', ['dist/regen-html.js'], 'generating', extraEnv);
     })
     .then(async () => {
       state.phase       = 'complete';
       state.running     = false;
       state.completedAt = new Date().toISOString();
 
-      // Save to DB if configured
+      // Save audit metadata to DB if configured.
+      // We do NOT store the full HTML in the DB — large reports (10–100 MB)
+      // would cause the insert to hang or time out. The HTML is already on disk;
+      // the /report route serves it from the filesystem directly.
       let savedId: number | null = null;
       if (hasDb()) {
         try {
           const meta = getReportMeta(outputDir);
-          const html = getReportFromFs(outputDir);
-          if (meta && html) {
+          if (meta) {
             const hostname = (() => { try { return new URL(targetUrl ?? '').hostname; } catch { return 'unknown'; } })();
-            state.reportId = null; // will be set below
             savedId = await saveAudit({
               targetUrl:       targetUrl ?? meta.targetUrl ?? 'unknown',
               hostname,
@@ -316,10 +320,10 @@ function runAudit(targetUrl?: string) {
               serious:         meta.serious ?? 0,
               moderate:        meta.moderate ?? 0,
               minor:           meta.minor ?? 0,
-              reportHtml:      html,
+              reportHtml:      '', // stored on filesystem, not in DB
             });
             state.reportId = savedId;
-            push('log', `Report saved to database (id: ${savedId})`, { phase: 'complete' });
+            push('log', `Audit metadata saved to database (id: ${savedId})`, { phase: 'complete' });
           }
         } catch (dbErr) {
           push('log', `Warning: DB save failed — ${(dbErr as Error).message}`, { phase: 'complete' });
