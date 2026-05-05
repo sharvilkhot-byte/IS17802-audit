@@ -40,6 +40,16 @@ function launchBrowser(headless: boolean) {
   });
 }
 
+/** Close a browser with a hard 10-second timeout.
+ *  Playwright's browser.close() can hang indefinitely if the browser process
+ *  gets stuck — without a timeout Promise.all(workers) never resolves. */
+async function closeBrowser(browser: import('playwright').Browser): Promise<void> {
+  await Promise.race([
+    browser.close(),
+    new Promise<void>(resolve => setTimeout(resolve, 10_000)),
+  ]).catch(() => {});
+}
+
 const CHECKPOINT_FILE = (outputDir: string) => path.join(outputDir, '.audit-checkpoint.json');
 
 /** Derive a stable hostname key from the output directory path */
@@ -65,16 +75,40 @@ async function loadCheckpoint(outputDir: string): Promise<Record<string, PageAud
   } catch { return {}; }
 }
 
-/** Save checkpoint — DB + filesystem (both, so either can recover) */
-async function saveCheckpoint(outputDir: string, results: Record<string, PageAuditResult>): Promise<void> {
-  // Filesystem (fast, synchronous)
-  try {
-    const tmp = CHECKPOINT_FILE(outputDir) + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(results), 'utf-8');
-    fs.renameSync(tmp, CHECKPOINT_FILE(outputDir));
-  } catch { /* non-fatal */ }
-  // Database (persists across container restarts) — fire-and-forget
-  if (hasDb()) {
+// Checkpoint save throttle — serialize at most once every N completions.
+// With 1000+ pages, JSON.stringify(results) can be 100-200 MB and takes
+// several seconds, blocking the Node.js event loop and preventing timers
+// (e.g. closeBrowser timeout) from firing. Saving every 20 pages reduces
+// I/O by 50× with at most 20-page rollback on crash.
+const CHECKPOINT_EVERY_N = 20;
+let _checkpointCounter = 0;
+
+/** Save checkpoint — throttled filesystem write + fire-and-forget DB upsert */
+async function saveCheckpoint(
+  outputDir: string,
+  results: Record<string, PageAuditResult>,
+  force = false,
+): Promise<void> {
+  _checkpointCounter++;
+  const shouldWrite = force || (_checkpointCounter % CHECKPOINT_EVERY_N === 0);
+
+  // Filesystem — only on throttle ticks to avoid blocking the event loop.
+  // Skip entirely for large audits (>500 pages): the DB handles persistence.
+  if (shouldWrite && Object.keys(results).length <= 500) {
+    try {
+      const tmp = CHECKPOINT_FILE(outputDir) + '.tmp';
+      // Yield to the event loop before the synchronous JSON.stringify so
+      // pending timer callbacks (e.g. closeBrowser timeout) can fire first.
+      await new Promise<void>(r => setImmediate(r));
+      fs.writeFileSync(tmp, JSON.stringify(results), 'utf-8');
+      fs.renameSync(tmp, CHECKPOINT_FILE(outputDir));
+    } catch { /* non-fatal */ }
+  }
+
+  // Database (persists across container restarts) — fire-and-forget.
+  // Also throttled: avoids sending a 100-200 MB JSONB payload to Postgres
+  // on every single page completion.
+  if (shouldWrite && hasDb()) {
     saveCheckpointDb(hostnameKey(outputDir), results).catch(() => { /* non-fatal */ });
   }
 }
@@ -139,19 +173,56 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
 
         // Restart browser periodically to clear accumulated memory
         if (pagesSinceRestart > 0 && pagesSinceRestart % BROWSER_RESTART_INTERVAL === 0) {
-          await browser.close().catch(() => {});
+          await closeBrowser(browser);
           browser = await launchBrowser(config.headless);
           pagesSinceRestart = 0;
         }
 
-        const result = await auditPage(browser, pageConfig, config);
+        // Hard 90-second per-page timeout — last resort if any engine stalls.
+        // The inner check-engine timeouts (axe: 45s, custom: 60s, ibm: 35s)
+        // should fire first; this catches anything else (page.goto hang, etc.).
+        const PAGE_TIMEOUT_MS = 90_000;
+        const result = await Promise.race([
+          auditPage(browser, pageConfig, config),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Page audit timed out after ${PAGE_TIMEOUT_MS / 1000}s`)), PAGE_TIMEOUT_MS),
+          ),
+        ]).catch(err => {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          console.error(`  Timeout/error on ${pageConfig.name}: ${errorMsg}`);
+          return {
+            page: pageConfig.name,
+            url: pageConfig.url,
+            timestamp: new Date().toISOString(),
+            violations: [{
+              id: nextId(),
+              ruleId: 'page-audit-timeout',
+              clause: { clause: '9.4.1.2', wcag: '4.1.2', title: 'Name, Role, Value', level: 'AA' as const, principle: 'Robust' as const },
+              page: pageConfig.name,
+              url: pageConfig.url,
+              impact: 'critical' as const,
+              description: `Page audit timed out: ${errorMsg}`,
+              help: 'Page could not be fully audited — manual review required.',
+              helpUrl: '',
+              source: 'custom' as const,
+              nodes: [{ html: '', target: ['body'], failureSummary: errorMsg }],
+            }],
+            incomplete: [],
+            passes: 0,
+            pageTitle: pageConfig.name,
+            loadTimeMs: PAGE_TIMEOUT_MS,
+            screenshotPath: '',
+          };
+        });
         results.push(result);
         pagesSinceRestart++;
         doneCount++;
 
-        // Save to checkpoint immediately after each page
+        // Save checkpoint (throttled — see CHECKPOINT_EVERY_N above).
+        // Force-save on the last page so no work is lost if we crash after.
         checkpointData[pageConfig.url] = result;
-        await saveCheckpoint(config.outputDir, checkpointData);
+        const isLastPage = queue.length === 0;
+        await saveCheckpoint(config.outputDir, checkpointData, isLastPage);
 
         const criticalCount = result.violations.filter(v => v.impact === 'critical').length;
         const seriousCount = result.violations.filter(v => v.impact === 'serious').length;
@@ -162,12 +233,32 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
         process.stdout.write(`[PROGRESS] ${doneCount}/${totalPages}\n`);
       }
     } finally {
-      await browser.close().catch(() => {});
+      await closeBrowser(browser);
     }
   }
 
   // Launch CONCURRENCY workers in parallel
-  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+  const workersFinished = Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+
+  // Watchdog: once every page is accounted for, give workers 30 s to finish
+  // browser cleanup — then return regardless. This prevents a hung browser.close()
+  // or blocked event-loop from requiring a manual force-stop + rerun.
+  const watchdog = new Promise<void>(resolve => {
+    const interval = setInterval(() => {
+      if (doneCount >= totalPages) {
+        clearInterval(interval);
+        // Grace period: let workers close browsers before we bail out
+        setTimeout(() => {
+          if (doneCount >= totalPages) {
+            console.log('[runner] All pages done — watchdog releasing after grace period');
+            resolve();
+          }
+        }, 30_000);
+      }
+    }, 2_000);
+  });
+
+  await Promise.race([workersFinished, watchdog]);
 
   return results;
 }
@@ -234,16 +325,28 @@ async function auditPage(
     pageTitle = await page.title();
 
     // ── Run all three check engines in parallel ───────────────────────────
+    // Each engine gets its own hard timeout so a stalled browser tab can't
+    // block the worker indefinitely (runCustomChecks runs 18 sequential
+    // page.evaluate calls — if the page hangs mid-check it would otherwise
+    // wait up to 18 × 30s = 9 minutes before Playwright's defaults fire).
+    function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+      return Promise.race([p, new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))]);
+    }
+
     const [axeResults, customResults, ibmResults] = await Promise.all([
-      new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
-        .analyze()
-        .catch(err => {
-          console.error(`  axe error on ${pageConfig.name}:`, err.message);
-          return { violations: [], incomplete: [], passes: [] };
-        }),
-      runCustomChecks(page, pageConfig.url),
-      runIbmChecks(page),
+      withTimeout(
+        new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
+          .analyze()
+          .catch(err => {
+            console.error(`  axe error on ${pageConfig.name}:`, err.message);
+            return { violations: [], incomplete: [], passes: [] };
+          }),
+        45_000,
+        { violations: [], incomplete: [], passes: [] },
+      ),
+      withTimeout(runCustomChecks(page, pageConfig.url), 60_000, []),
+      withTimeout(runIbmChecks(page), 35_000, []),
     ]);
 
     // Map axe violations to IS 17802

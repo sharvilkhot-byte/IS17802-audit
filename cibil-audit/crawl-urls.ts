@@ -9,7 +9,7 @@
  *   TARGET_URL          Required. Starting URL to crawl.
  *   OUTPUT_DIR          Where to write urls.csv (default: ./audit-results)
  *   CRAWL_CONCURRENCY   Parallel fetch workers (default: 10)
- *   MAX_PAGES           Stop after N pages (default: 1000)
+ *   MAX_PAGES           Stop after N pages (default: 1500)
  *   CRAWL_TIMEOUT_MS    Per-request timeout in ms (default: 15000)
  */
 
@@ -20,7 +20,7 @@ import { URL } from 'url';
 const TARGET_URL  = process.env.TARGET_URL;
 const OUTPUT_DIR  = process.env.OUTPUT_DIR  ?? path.join(process.cwd(), 'audit-results');
 const CONCURRENCY = parseInt(process.env.CRAWL_CONCURRENCY ?? '10', 10);
-const MAX_PAGES   = parseInt(process.env.MAX_PAGES         ?? '1000', 10);
+const MAX_PAGES   = parseInt(process.env.MAX_PAGES         ?? '1500', 10);
 const TIMEOUT_MS  = parseInt(process.env.CRAWL_TIMEOUT_MS  ?? '15000', 10);
 
 const SKIP_EXT = /\.(pdf|jpg|jpeg|png|gif|svg|webp|ico|css|js|mjs|woff|woff2|ttf|eot|otf|mp4|webm|ogg|wav|zip|gz|tar|xml|rss|atom|txt|csv|xlsx|docx|pptx)(\?.*)?$/i;
@@ -48,13 +48,65 @@ function isHtmlResponse(contentType: string | null): boolean {
   return contentType.includes('text/html') || contentType.includes('application/xhtml');
 }
 
-/** Extract all href values from raw HTML — no DOM parser needed, regex is sufficient */
+/** Extract all navigable URLs from raw HTML */
 function extractHrefs(html: string): string[] {
   const hrefs: string[] = [];
-  const re = /href=["']([^"']+)["']/gi;
+
+  // <a href="...">, <link href="...">
+  const hrefRe = /href=["']([^"'#][^"']*?)["']/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) hrefs.push(m[1]);
+  while ((m = hrefRe.exec(html)) !== null) hrefs.push(m[1]);
+
+  // <form action="...">
+  const actionRe = /action=["']([^"']+)["']/gi;
+  while ((m = actionRe.exec(html)) !== null) hrefs.push(m[1]);
+
   return hrefs;
+}
+
+/** Parse URLs out of an XML sitemap (sitemap index or urlset) */
+function extractSitemapUrls(xml: string): string[] {
+  const urls: string[] = [];
+  // <loc>https://...</loc>
+  const locRe = /<loc>\s*([^<\s]+)\s*<\/loc>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = locRe.exec(xml)) !== null) urls.push(m[1]);
+  return urls;
+}
+
+/** Fetch and parse a sitemap (or sitemap index). Returns discovered page URLs. */
+async function crawlSitemap(sitemapUrl: string, origin: string, seen: Set<string>): Promise<string[]> {
+  const discovered: string[] = [];
+  const visited = new Set<string>();
+
+  async function fetchSitemap(url: string): Promise<void> {
+    if (visited.has(url)) return;
+    visited.add(url);
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) return;
+      const text = await res.text();
+      const urls = extractSitemapUrls(text);
+      for (const u of urls) {
+        if (u.includes('/sitemap') && (u.endsWith('.xml') || u.includes('sitemap'))) {
+          // Nested sitemap index — recurse
+          await fetchSitemap(u);
+        } else {
+          const normalized = normalizeUrl(u, url);
+          if (normalized && isSameOrigin(normalized, origin) && !seen.has(normalized)) {
+            seen.add(normalized);
+            discovered.push(normalized);
+          }
+        }
+      }
+    } catch { /* unreachable sitemap — skip */ }
+  }
+
+  await fetchSitemap(sitemapUrl);
+  return discovered;
 }
 
 // ─── Crawler ──────────────────────────────────────────────────────────────────
@@ -65,6 +117,17 @@ async function crawl(startUrl: string): Promise<string[]> {
   const queue  = [startUrl];                    // pending fetch queue
   const found: string[] = [];                   // successfully fetched HTML pages
   const pending = new Set<Promise<void>>();      // in-flight requests
+
+  // ── Seed from sitemap.xml before regular crawl ───────────────────────────
+  const sitemapUrl = `${origin}/sitemap.xml`;
+  process.stdout.write(`  Checking sitemap: ${sitemapUrl}\n`);
+  const sitemapUrls = await crawlSitemap(sitemapUrl, origin, seen);
+  if (sitemapUrls.length > 0) {
+    queue.push(...sitemapUrls);
+    process.stdout.write(`  Sitemap seeded ${sitemapUrls.length} URLs into queue\n`);
+  } else {
+    process.stdout.write(`  No sitemap found — crawling via href links only\n`);
+  }
 
   const csvDir  = path.join(OUTPUT_DIR, 'crawled-urls');
   const csvPath = path.join(csvDir, 'urls.csv');

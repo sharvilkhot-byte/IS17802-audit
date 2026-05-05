@@ -756,16 +756,6 @@ async function checkColorOnlyInfo(page: Page, results: CustomCheckResult[]): Pro
 // ─── Session Timeout Warning ──────────────────────────────────────────────────
 
 async function checkSessionTimeout(page: Page, results: CustomCheckResult[]): Promise<void> {
-  await page.evaluate(() => {
-    const metaRefresh = document.querySelector('meta[http-equiv="refresh"]');
-    if (metaRefresh) {
-      const content = metaRefresh.getAttribute('content') ?? '';
-      const seconds = parseInt(content.split(';')[0]);
-      if (seconds > 0 && seconds < 7200) return false;
-    }
-    return true;
-  });
-
   results.push({
     ruleId: 'custom-session-timeout',
     impact: 'moderate',

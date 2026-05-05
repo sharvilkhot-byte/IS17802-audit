@@ -33,12 +33,16 @@ export async function runIbmChecks(page: Page): Promise<IbmIssue[]> {
     // Inject the IBM ACE engine into the live page
     await page.addScriptTag({ content: script });
 
-    // Run the checker inside the browser context and serialize results
+    // Run the checker inside the browser context and serialize results.
+    // Hard 25-second timeout — IBM ACE can hang on complex pages.
     const raw = await page.evaluate(async () => {
       try {
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('IBM ACE timeout')), 25_000),
+        );
         // @ts-ignore — ace is now a global from the injected script
         const checker = new ace.Checker();
-        const report = await checker.check(document, ['WCAG_2_1']);
+        const report = await Promise.race([checker.check(document, ['WCAG_2_1']), timeout]);
         return (report.results as any[])
           .filter(r =>
             r.value &&
@@ -53,7 +57,7 @@ export async function runIbmChecks(page: Page): Promise<IbmIssue[]> {
       } catch {
         return [];
       }
-    });
+    }, { timeout: 30_000 });
 
     return (raw as { ruleId: string; message: string; snippet: string }[]).map(r => ({
       ...r,
