@@ -40,7 +40,9 @@ async function main(): Promise<void> {
   const startTime = Date.now();
 
   // Run the audit
+  console.log('[report] Starting audit…');
   const pageResults: PageAuditResult[] = await runAudit(auditConfig);
+  console.log(`[report] Audit done — ${pageResults.length} pages, building summary…`);
 
   // Build summary
   const allViolations: AuditViolation[] = pageResults.flatMap(p => p.violations);
@@ -52,6 +54,8 @@ async function main(): Promise<void> {
     byClause[v.clause.clause] = (byClause[v.clause.clause] ?? 0) + 1;
     byPage[v.page] = (byPage[v.page] ?? 0) + 1;
   }
+
+  console.log(`[report] Summary built — ${allViolations.length} violations across ${Object.keys(byClause).length} clauses`);
 
   const report: AuditReport = {
     meta: {
@@ -74,10 +78,19 @@ async function main(): Promise<void> {
     coverage: buildCoverage(auditConfig),
   };
 
+  // Compute URL path for violations.json so the HTML report can fetch it lazily
+  const BASE_RESULTS_DIR = path.join(process.cwd(), 'audit-results');
+  const relDir = path.relative(BASE_RESULTS_DIR, auditConfig.outputDir).replace(/\\/g, '/');
+  const violationsUrl = relDir ? `/audit-results/${relDir}/violations.json` : `/audit-results/violations.json`;
+
   // Generate reports
-  const htmlPath = generateHTMLReport(report, auditConfig.outputDir);
+  console.log('[report] Generating HTML report…');
+  const htmlPath = generateHTMLReport(report, auditConfig.outputDir, violationsUrl);
+  console.log('[report] HTML done. Generating CSV…');
   const csvPath = generateCSVReport(report, auditConfig.outputDir);
+  console.log('[report] CSV done. Generating JSON…');
   const jsonPath = generateJSONReport(report, auditConfig.outputDir);
+  console.log('[report] All reports written.');
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 

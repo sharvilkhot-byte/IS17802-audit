@@ -561,13 +561,15 @@ function buildCoveragePanel(cov: CoverageSummary): string {
 </script>`;
 }
 
-export function generateHTMLReport(report: AuditReport, outputDir: string): string {
-  // Write slim violations to a separate JSON file — avoids inline embedding issues
+export function generateHTMLReport(report: AuditReport, outputDir: string, violationsUrl = '/audit-results/violations.json'): string {
+  // Write slim violations to a separate JSON file served at violationsUrl.
+  // The HTML report loads them lazily via fetch — violations are NOT embedded
+  // in the HTML string, which previously caused 50-200 MB string construction hangs.
   const allViolations = report.pages.flatMap(p => p.violations);
   const slim = { violations: allViolations.map(slimViolation) };
   fs.writeFileSync(path.join(outputDir, 'violations.json'), JSON.stringify(slim), 'utf-8');
 
-  const html = buildHTML(report);
+  const html = buildHTML(report, violationsUrl);
   const outputPath = path.join(outputDir, 'accessibility-report.html');
   fs.writeFileSync(outputPath, html, 'utf-8');
   return outputPath;
@@ -615,7 +617,7 @@ function slimViolation(v: AuditViolation) {
   };
 }
 
-function buildHTML(report: AuditReport): string {
+function buildHTML(report: AuditReport, violationsUrl: string): string {
   const { critical, serious, moderate, minor } = report.summary;
   const total = report.summary.totalViolations;
   const allViolations = report.pages.flatMap(p => p.violations);
@@ -757,10 +759,9 @@ function buildHTML(report: AuditReport): string {
 
 
 
-  // Embed violations as compact JSON — rendered on-demand in the browser (50 per page).
-  // This replaces pre-rendering all violations as HTML strings (which caused OOM hangs
-  // for large audits with 50k+ violations: 75-200 MB of string concatenation in Node).
-  const violationsJson = safeJson(allViolations.map(slimViolation));
+  // Violations are NOT embedded in the HTML — they're loaded lazily from violationsUrl
+  // (violations.json on the same server) when the user opens the Violations tab.
+  // This eliminates the ~4-10 MB JSON string from the Node.js build process entirely.
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1378,9 +1379,9 @@ document.querySelectorAll('#ptbl th').forEach(function(th){
 });
 </script>
 
-<script>var VD={violations:${violationsJson}};</script>
+<script>var VIOLATIONS_URL="${e(violationsUrl)}";</script>
 <script>
-/* ── 3. VIOLATIONS TAB — data-driven, renders 50 items per page on demand ── */
+/* ── 3. VIOLATIONS TAB — data loaded lazily from VIOLATIONS_URL ── */
 var PAGE_SIZE = 50;
 var curPage = 1;
 var allData = null;   // slim violation objects from VD
@@ -1424,13 +1425,26 @@ function makeViolationEl(v){
 
 function initViolations(){
   if(initialized) return;
-  allData=(window.VD&&window.VD.violations?window.VD.violations:[]).map(function(v,i){
-    v._i=i;
-    v._sk=(v.desc+' '+v.clause+' '+v.title+' '+v.page+' '+v.help).toLowerCase();
-    return v;
-  });
-  initialized=true;
-  applyFilters();
+  initialized=true; // prevent double-fetch on rapid tab clicks
+  var vlist=document.getElementById('vlist');
+  if(vlist) vlist.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8;font-size:13px">Loading violations…</div>';
+  fetch(window.VIOLATIONS_URL||'/audit-results/violations.json')
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(function(d){
+      allData=(d.violations||[]).map(function(v,i){
+        v._i=i;
+        v._sk=(v.desc+' '+v.clause+' '+v.title+' '+v.page+' '+v.help).toLowerCase();
+        return v;
+      });
+      applyFilters();
+    })
+    .catch(function(err){
+      var vl=document.getElementById('vlist');
+      if(vl) vl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626;font-size:13px">Failed to load violations: '+esc(String(err))+'</div>';
+    });
 }
 
 function getFilters(){
