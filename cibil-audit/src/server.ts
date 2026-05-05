@@ -88,6 +88,9 @@ function restoreState() {
 const progressBus = new EventEmitter();
 progressBus.setMaxListeners(50);
 
+// Track the currently running child process so it can be killed on demand
+let currentChild: ReturnType<typeof spawn> | null = null;
+
 function push(type: string, message: string, extra: object = {}) {
   const entry = { type, message, ts: new Date().toISOString(), ...extra };
   if (type === 'log') state.log.push(message);
@@ -274,6 +277,28 @@ app.post('/api/audit/start', (req: Request, res: Response) => {
   runAudit(targetUrl);
 });
 
+// Force-stop a running audit and reset state to idle
+app.post('/api/audit/stop', (_req: Request, res: Response) => {
+  if (!state.running) {
+    return res.status(400).json({ error: 'No audit is running' });
+  }
+
+  // Kill the child process if still alive
+  if (currentChild) {
+    try { currentChild.kill('SIGTERM'); } catch { /* already dead */ }
+    currentChild = null;
+  }
+
+  state.running     = false;
+  state.phase       = 'idle';
+  state.lastError   = 'Audit stopped by user';
+  state.completedAt = new Date().toISOString();
+  persistState();
+
+  push('error', 'Audit stopped by user.', { phase: 'idle' });
+  res.json({ stopped: true });
+});
+
 // ─── Audit runner ─────────────────────────────────────────────────────────────
 
 function runAudit(targetUrl?: string) {
@@ -351,6 +376,7 @@ function runProcess(cmd: string, args: string[], phase: string, extraEnv: Record
       shell: false,
       env: { ...process.env, HEADLESS: 'true', ...extraEnv },
     });
+    currentChild = child;
 
     child.stdout.on('data', (data: Buffer) => {
       const lines = data.toString().split('\n').filter(l => l.trim());
@@ -369,11 +395,15 @@ function runProcess(cmd: string, args: string[], phase: string, extraEnv: Record
     });
 
     child.on('close', (code: number) => {
+      if (currentChild === child) currentChild = null;
       if (code === 0) resolve();
       else reject(new Error(`Process exited with code ${code}`));
     });
 
-    child.on('error', reject);
+    child.on('error', (err) => {
+      if (currentChild === child) currentChild = null;
+      reject(err);
+    });
   });
 }
 

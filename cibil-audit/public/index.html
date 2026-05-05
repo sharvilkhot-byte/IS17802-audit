@@ -426,7 +426,10 @@ footer{
         <div class="card-title" id="progress-title">Initialising audit…</div>
         <div class="card-sub" id="progress-sub">Preparing crawl engine</div>
       </div>
-      <div class="ml-auto"><span class="badge running" id="status-badge">● Running</span></div>
+      <div class="ml-auto" style="display:flex;align-items:center;gap:10px">
+        <button id="btn-stop" onclick="stopAudit()" style="display:none;height:32px;padding:0 14px;border-radius:8px;font-size:12px;font-weight:600;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;cursor:pointer" title="Kill the running process and reset to idle">Force Stop</button>
+        <span class="badge running" id="status-badge">● Running</span>
+      </div>
     </div>
     <div class="card-body">
       <div class="steps">
@@ -631,6 +634,19 @@ function setButton(running){
     iconEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   }
   document.getElementById('btn-label').textContent = running ? 'Running…' : 'Start Audit';
+  const stopBtn = document.getElementById('btn-stop');
+  if(stopBtn) stopBtn.style.display = running ? '' : 'none';
+}
+
+// ── Force stop ────────────────────────────────────────────────────────────────
+function stopAudit(){
+  if(!confirm('Force-stop the running audit and reset to idle?')) return;
+  const stopBtn = document.getElementById('btn-stop');
+  if(stopBtn){ stopBtn.disabled = true; stopBtn.textContent = 'Stopping…'; }
+  fetch('/api/audit/stop', {method:'POST'})
+    .then(r=>r.json())
+    .then(()=>{ location.reload(); })
+    .catch(()=>{ location.reload(); });
 }
 
 // ── Reports ───────────────────────────────────────────────────────────────────
