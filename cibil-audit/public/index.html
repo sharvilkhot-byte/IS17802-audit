@@ -457,6 +457,16 @@ footer{
         </div>
         <div class="prog-track"><div class="prog-bar running" id="prog-bar"></div></div>
       </div>
+      <div id="pages-progress" style="display:none;margin:10px 0 4px;padding:10px 14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:12px;font-weight:600;color:var(--text-2)">Pages Audited</span>
+          <span id="pages-count" style="font-size:12px;font-weight:700;color:var(--accent)">0 / 0</span>
+        </div>
+        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div id="pages-bar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width .4s ease"></div>
+        </div>
+        <div id="pages-resume" style="display:none;margin-top:5px;font-size:11px;color:var(--orange)">↩ Resuming from checkpoint</div>
+      </div>
       <div class="log-wrap" id="log-wrap"></div>
     </div>
   </div>
@@ -722,6 +732,24 @@ function applyState(d){
     setBadge(phase);
     if(d.targetUrl || d.startedAt)
       setProgressTitle(d.targetUrl || '', d.startedAt);
+
+    // Pages-audited progress bar — shown during auditing phase
+    const pagesEl = document.getElementById('pages-progress');
+    const pagesCount = document.getElementById('pages-count');
+    const pagesBar = document.getElementById('pages-bar');
+    const pagesResume = document.getElementById('pages-resume');
+    if(pagesEl){
+      const auditing = phase === 'auditing';
+      pagesEl.style.display = auditing && d.totalPages > 0 ? '' : 'none';
+      if(auditing && d.totalPages > 0){
+        const done = d.pagesAudited || 0;
+        const total = d.totalPages || 0;
+        pagesCount.textContent = done + ' / ' + total;
+        pagesBar.style.width = (total > 0 ? Math.round(done/total*100) : 0) + '%';
+        // Show resume badge if audit started with pages already done (checkpoint restore)
+        if(pagesResume) pagesResume.style.display = (done > 0 && done === total) ? 'none' : (done > 0 ? '' : 'none');
+      }
+    }
 
     // Sync log — only append new lines since last poll
     if(d.log && d.log.length > lastLogCount){

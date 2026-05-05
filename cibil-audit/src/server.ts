@@ -35,6 +35,8 @@ interface AuditState {
   targetUrl: string | null;
   auditId: string | null;
   reportId: number | null;
+  pagesAudited: number;
+  totalPages: number;
   log: string[];
 }
 
@@ -47,6 +49,8 @@ const state: AuditState = {
   targetUrl: null,
   auditId: null,
   reportId: null,
+  pagesAudited: 0,
+  totalPages: 0,
   log: [],
 };
 
@@ -261,15 +265,17 @@ app.post('/api/audit/start', (req: Request, res: Response) => {
   }
 
   const auditId = randomUUID().slice(0, 8); // short 8-char ID
-  state.running   = true;
-  state.phase     = 'crawling';
-  state.startedAt = new Date().toISOString();
-  state.completedAt = null;
-  state.lastError = null;
-  state.targetUrl = targetUrl ?? null;
-  state.auditId   = auditId;
-  state.reportId  = null;
-  state.log       = [];
+  state.running      = true;
+  state.phase        = 'crawling';
+  state.startedAt    = new Date().toISOString();
+  state.completedAt  = null;
+  state.lastError    = null;
+  state.targetUrl    = targetUrl ?? null;
+  state.auditId      = auditId;
+  state.reportId     = null;
+  state.pagesAudited = 0;
+  state.totalPages   = 0;
+  state.log          = [];
   persistState();
 
   res.json({ started: true, auditId });
@@ -303,21 +309,33 @@ app.post('/api/audit/stop', (_req: Request, res: Response) => {
 
 function runAudit(targetUrl?: string) {
   const label = targetUrl ?? 'the target site';
-  push('phase', `Crawling ${label} for URLs…`, { phase: 'crawling', targetUrl: targetUrl ?? null });
-  state.phase = 'crawling';
-
   const outputDir = resultsDirFor(targetUrl);
   const extraEnv: Record<string, string> = {
     ...(targetUrl ? { TARGET_URL: targetUrl } : {}),
     OUTPUT_DIR: outputDir,
   };
 
-  runProcess('node', ['dist/crawl-urls.js'], 'crawling', extraEnv)
+  // Skip re-crawl if urls.csv already exists from a previous run —
+  // saves 30-120 seconds when resuming after a crash or force-stop.
+  const urlsCsv = path.join(outputDir, 'crawled-urls', 'urls.csv');
+  const hasCrawl = fs.existsSync(urlsCsv);
+
+  if (hasCrawl) {
+    push('phase', `Skipping crawl — using existing ${path.basename(urlsCsv)} (${fs.statSync(urlsCsv).size} bytes). Delete it to re-crawl.`, { phase: 'auditing', targetUrl: targetUrl ?? null });
+    state.phase = 'auditing';
+  } else {
+    push('phase', `Crawling ${label} for URLs…`, { phase: 'crawling', targetUrl: targetUrl ?? null });
+    state.phase = 'crawling';
+  }
+
+  const crawlStep = hasCrawl
+    ? Promise.resolve()
+    : runProcess('node', ['dist/crawl-urls.js'], 'crawling', extraEnv);
+
+  crawlStep
     .then(() => {
       push('phase', 'Running IS 17802 accessibility audit on all pages…', { phase: 'auditing' });
       state.phase = 'auditing';
-      // index.js runs the full audit AND generates HTML/CSV/JSON reports itself —
-      // no separate report generation step needed.
       return runProcess('node', ['dist/src/index.js'], 'auditing', extraEnv);
     })
     .then(async () => {
@@ -381,7 +399,18 @@ function runProcess(cmd: string, args: string[], phase: string, extraEnv: Record
     child.stdout.on('data', (data: Buffer) => {
       const lines = data.toString().split('\n').filter(l => l.trim());
       for (const line of lines) {
-        push('log', line.trim(), { phase });
+        const trimmed = line.trim();
+        // Structured progress from runner — update counters, don't add to log
+        if (trimmed.startsWith('[PROGRESS] ')) {
+          const m = trimmed.match(/\[PROGRESS\] (\d+)\/(\d+)/);
+          if (m) {
+            state.pagesAudited = parseInt(m[1], 10);
+            state.totalPages   = parseInt(m[2], 10);
+            persistState();
+          }
+          continue;
+        }
+        push('log', trimmed, { phase });
       }
     });
 

@@ -80,26 +80,28 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
     console.log('');
   }
 
+  // Total auditable pages (excludes requiresAuth)
+  const auditablePages = config.pages.filter(p => !p.requiresAuth);
+  const totalPages = auditablePages.length;
+
   // Collect already-completed results from checkpoint
   const results: PageAuditResult[] = [];
-  for (const pageConfig of config.pages) {
-    if (pageConfig.requiresAuth) {
-      console.log(`⚠  Skipping "${pageConfig.name}" — requires authentication`);
-      continue;
-    }
+  for (const pageConfig of auditablePages) {
     if (checkpoint[pageConfig.url]) {
       results.push(checkpoint[pageConfig.url]);
       process.stdout.write(`  ↩ ${pageConfig.name} (restored from checkpoint)\n`);
     }
   }
 
-  // Build queue of pages that still need auditing
-  const queue: PageConfig[] = config.pages.filter(
-    p => !p.requiresAuth && !checkpoint[p.url],
-  );
+  // Emit initial progress so the UI immediately shows the restored count
+  process.stdout.write(`[PROGRESS] ${results.length}/${totalPages}\n`);
 
-  // Shared checkpoint state — safe in single-threaded Node.js
+  // Build queue of pages that still need auditing
+  const queue: PageConfig[] = auditablePages.filter(p => !checkpoint[p.url]);
+
+  // Shared state — safe in single-threaded Node.js
   const checkpointData: Record<string, PageAuditResult> = { ...checkpoint };
+  let doneCount = results.length; // includes restored pages
 
   // Worker: pulls pages from the shared queue until empty
   async function worker(): Promise<void> {
@@ -121,6 +123,7 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
         const result = await auditPage(browser, pageConfig, config);
         results.push(result);
         pagesSinceRestart++;
+        doneCount++;
 
         // Save to checkpoint immediately after each page
         checkpointData[pageConfig.url] = result;
@@ -130,7 +133,9 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
         const seriousCount = result.violations.filter(v => v.impact === 'serious').length;
 
         console.log(`  ✓ ${pageConfig.name}`);
-        console.log(`    Violations: ${result.violations.length} (Critical: ${criticalCount}, Serious: ${seriousCount})\n`);
+        console.log(`    Violations: ${result.violations.length} (Critical: ${criticalCount}, Serious: ${seriousCount})`);
+        // Structured progress line — parsed by server.ts to update state.pagesAudited
+        process.stdout.write(`[PROGRESS] ${doneCount}/${totalPages}\n`);
       }
     } finally {
       await browser.close().catch(() => {});
