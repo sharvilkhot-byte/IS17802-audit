@@ -231,9 +231,9 @@ async function auditPage(
         helpUrl: v.helpUrl,
         source: 'axe',
         nodes: v.nodes.slice(0, 5).map(n => ({
-          html: n.html,
+          html: n.html.substring(0, 500),
           target: n.target.map(t => String(t)),
-          failureSummary: n.failureSummary ?? '',
+          failureSummary: (n.failureSummary ?? '').substring(0, 400),
         })),
       });
     }
@@ -252,9 +252,9 @@ async function auditPage(
         helpUrl: v.helpUrl,
         source: 'axe',
         nodes: v.nodes.slice(0, 3).map(n => ({
-          html: n.html,
+          html: n.html.substring(0, 500),
           target: n.target.map(t => String(t)),
-          failureSummary: n.failureSummary ?? '',
+          failureSummary: (n.failureSummary ?? '').substring(0, 400),
         })),
       });
     }
