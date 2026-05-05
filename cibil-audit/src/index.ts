@@ -116,7 +116,7 @@ async function main(): Promise<void> {
   console.log(`  CSV    : ${path.basename(csvPath)}`);
   console.log(`  JSON   : ${path.basename(jsonPath)}`);
   // Clear checkpoint — audit completed successfully, no need to resume
-  clearCheckpoint(auditConfig.outputDir);
+  await clearCheckpoint(auditConfig.outputDir);
 
   console.log(`\nTime elapsed: ${elapsed}s`);
   console.log(`\nNOTE: Automated tools detect ~30-40% of issues.`);

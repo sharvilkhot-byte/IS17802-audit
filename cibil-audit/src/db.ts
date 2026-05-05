@@ -32,6 +32,44 @@ export async function initDb(): Promise<void> {
       created_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Checkpoint table — one row per hostname, upserted after each page.
+  // Survives container restarts (unlike the ephemeral filesystem on Railway).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS audit_checkpoints (
+      hostname     TEXT PRIMARY KEY,
+      pages_done   JSONB       NOT NULL DEFAULT '{}',
+      updated_at   TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+}
+
+// ─── Checkpoint persistence in PostgreSQL ────────────────────────────────────
+// pages_done is a JSON object keyed by page URL, value is the PageAuditResult.
+// Using JSONB lets Postgres store/index it efficiently.
+
+export async function saveCheckpointDb(hostname: string, pages: Record<string, unknown>): Promise<void> {
+  if (!pool) return;
+  await pool.query(
+    `INSERT INTO audit_checkpoints (hostname, pages_done, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (hostname) DO UPDATE
+       SET pages_done = $2, updated_at = NOW()`,
+    [hostname, JSON.stringify(pages)],
+  );
+}
+
+export async function loadCheckpointDb(hostname: string): Promise<Record<string, unknown>> {
+  if (!pool) return {};
+  const res = await pool.query<{ pages_done: Record<string, unknown> }>(
+    `SELECT pages_done FROM audit_checkpoints WHERE hostname = $1`,
+    [hostname],
+  );
+  return res.rows[0]?.pages_done ?? {};
+}
+
+export async function clearCheckpointDb(hostname: string): Promise<void> {
+  if (!pool) return;
+  await pool.query(`DELETE FROM audit_checkpoints WHERE hostname = $1`, [hostname]);
 }
 
 export interface AuditRow {

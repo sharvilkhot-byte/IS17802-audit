@@ -4,6 +4,7 @@ import { runCustomChecks } from './checks/customChecks';
 import { runIbmChecks } from './checks/ibmChecker';
 import { getClause } from './mapper/clauseMapper';
 import { AuditConfig, PageAuditResult, AuditViolation, PageConfig } from './types';
+import { hasDb, saveCheckpointDb, loadCheckpointDb, clearCheckpointDb } from './db';
 import path from 'path';
 import fs from 'fs';
 
@@ -41,7 +42,20 @@ function launchBrowser(headless: boolean) {
 
 const CHECKPOINT_FILE = (outputDir: string) => path.join(outputDir, '.audit-checkpoint.json');
 
-function loadCheckpoint(outputDir: string): Record<string, PageAuditResult> {
+/** Derive a stable hostname key from the output directory path */
+function hostnameKey(outputDir: string): string {
+  return path.basename(outputDir) || 'default';
+}
+
+/** Load checkpoint — DB first (survives container restarts), filesystem fallback */
+async function loadCheckpoint(outputDir: string): Promise<Record<string, PageAuditResult>> {
+  if (hasDb()) {
+    try {
+      const data = await loadCheckpointDb(hostnameKey(outputDir));
+      if (Object.keys(data).length > 0) return data as Record<string, PageAuditResult>;
+    } catch { /* fall through to filesystem */ }
+  }
+  // Filesystem fallback (local dev / no DB)
   try {
     const file = CHECKPOINT_FILE(outputDir);
     if (!fs.existsSync(file)) return {};
@@ -51,46 +65,56 @@ function loadCheckpoint(outputDir: string): Record<string, PageAuditResult> {
   } catch { return {}; }
 }
 
-function saveCheckpoint(outputDir: string, results: Record<string, PageAuditResult>) {
+/** Save checkpoint — DB + filesystem (both, so either can recover) */
+async function saveCheckpoint(outputDir: string, results: Record<string, PageAuditResult>): Promise<void> {
+  // Filesystem (fast, synchronous)
   try {
     const tmp = CHECKPOINT_FILE(outputDir) + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(results), 'utf-8');
     fs.renameSync(tmp, CHECKPOINT_FILE(outputDir));
   } catch { /* non-fatal */ }
+  // Database (persists across container restarts) — fire-and-forget
+  if (hasDb()) {
+    saveCheckpointDb(hostnameKey(outputDir), results).catch(() => { /* non-fatal */ });
+  }
 }
 
-export function clearCheckpoint(outputDir: string) {
+/** Clear checkpoint on successful audit completion */
+export async function clearCheckpoint(outputDir: string): Promise<void> {
   try { fs.unlinkSync(CHECKPOINT_FILE(outputDir)); } catch { /* already gone */ }
+  if (hasDb()) {
+    clearCheckpointDb(hostnameKey(outputDir)).catch(() => { /* non-fatal */ });
+  }
 }
 
 export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> {
-  // Load checkpoint — resume from where a previous crashed audit left off
-  const checkpoint = loadCheckpoint(config.outputDir);
-  const resuming = Object.keys(checkpoint).length > 0;
+  // Load checkpoint — DB-backed so it survives container restarts on Railway
+  const checkpoint = await loadCheckpoint(config.outputDir);
+  const restoredCount = Object.keys(checkpoint).length;
+  const resuming = restoredCount > 0;
 
   console.log(`\n${'='.repeat(60)}`);
   console.log('  IS 17802 Accessibility Audit');
   console.log(`${'='.repeat(60)}\n`);
   console.log(`Mode: ${config.headless ? 'Headless' : 'Visible browser'}`);
-  console.log(`Pages to audit: ${config.pages.length}`);
   console.log(`Concurrency: ${CONCURRENCY} parallel workers`);
-  if (resuming) {
-    console.log(`Resuming from checkpoint — ${Object.keys(checkpoint).length} pages already done\n`);
-  } else {
-    console.log('');
-  }
 
   // Total auditable pages (excludes requiresAuth)
   const auditablePages = config.pages.filter(p => !p.requiresAuth);
   const totalPages = auditablePages.length;
 
-  // Collect already-completed results from checkpoint
+  // Collect already-completed results from checkpoint (no per-page log spam)
   const results: PageAuditResult[] = [];
   for (const pageConfig of auditablePages) {
     if (checkpoint[pageConfig.url]) {
       results.push(checkpoint[pageConfig.url]);
-      process.stdout.write(`  ↩ ${pageConfig.name} (restored from checkpoint)\n`);
     }
+  }
+
+  if (resuming) {
+    console.log(`Resuming — ${restoredCount}/${totalPages} pages restored from checkpoint, ${totalPages - restoredCount} remaining\n`);
+  } else {
+    console.log(`Pages to audit: ${totalPages}\n`);
   }
 
   // Emit initial progress so the UI immediately shows the restored count
@@ -127,7 +151,7 @@ export async function runAudit(config: AuditConfig): Promise<PageAuditResult[]> 
 
         // Save to checkpoint immediately after each page
         checkpointData[pageConfig.url] = result;
-        saveCheckpoint(config.outputDir, checkpointData);
+        await saveCheckpoint(config.outputDir, checkpointData);
 
         const criticalCount = result.violations.filter(v => v.impact === 'critical').length;
         const seriousCount = result.violations.filter(v => v.impact === 'serious').length;
