@@ -88,6 +88,10 @@ const config: AuditConfig = {
     { name: 'MyScore Login (MFI)', url: 'https://myscore.cibil.com/CreditView/login.page?enterprise=MFI', waitFor: 'body', requiresAuth: false },
     { name: 'MyScore Enroll (Free Annual)', url: 'https://myscore.cibil.com/CreditView/enrollShort_new.page?enterprise=CIBIL&offer=FACRA', waitFor: 'body', requiresAuth: false },
     { name: 'CIBIL Rank CCR Login', url: 'https://cibilrankccr.cibil.com/CreditView/login.page?enterprise=CIBILCOMM', waitFor: 'body', requiresAuth: false },
+    { name: 'MyScore Login (Hindi)', url: 'https://myscore.cibil.com/CreditView/login.page?enterprise=CIBIL&locale=hi', waitFor: 'body', requiresAuth: false },
+    { name: 'MyScore Login (Tamil)', url: 'https://myscore.cibil.com/CreditView/login.page?enterprise=CIBIL&locale=ta', waitFor: 'body', requiresAuth: false },
+    { name: 'MyScore Login (Telugu)', url: 'https://myscore.cibil.com/CreditView/login.page?enterprise=CIBIL&locale=te', waitFor: 'body', requiresAuth: false },
+    { name: 'MyScore Login (Bengali)', url: 'https://myscore.cibil.com/CreditView/login.page?enterprise=CIBIL&locale=be', waitFor: 'body', requiresAuth: false },
     // Post-login authenticated pages — skipped until login flow is scripted
     { name: 'MyScore Dashboard (Consumer) [AUTH]', url: 'https://myscore.cibil.com/CreditView/login.page?enterprise=CIBIL', waitFor: 'body', requiresAuth: true },
 
@@ -218,6 +222,8 @@ const config: AuditConfig = {
     { name: 'Blog - Credit Setup Habit Stacking', url: 'https://www.cibil.com/blog/credit-setup-how-to-build-a-habit-stacked-credit-routine-that-actually-sticks', waitFor: 'body' },
     { name: 'Blog - New Credit Card Storybook', url: 'https://www.cibil.com/blog/new-credit-card-your-storybook-of-healthy-credit-habits-begins-here', waitFor: 'body' },
     { name: 'Blog - CIBIL Score Beyond Loan Approvals', url: 'https://www.cibil.com/blog/why-your-cibil-score-matters-beyond-loan-approvals', waitFor: 'body' },
+    { name: 'Blog - Improve Access to Credit for Business', url: 'https://www.cibil.com/blog/want-to-improve-access-to-credit-for-your-business', waitFor: 'body' },
+    { name: 'Blog - MSME Faster Loan Access', url: 'https://www.cibil.com/blog/paving-the-way-for-faster-access-to-loans-for-msme', waitFor: 'body' },
 
     // ── Hindi (hi) Pages ───────────────────────────────────────────────────
     { name: 'HI - Homepage', url: 'https://www.cibil.com/hi', waitFor: 'body' },

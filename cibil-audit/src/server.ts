@@ -258,9 +258,42 @@ app.post('/api/audit/start', (req: Request, res: Response) => {
   }
 
   const targetUrl: string | undefined = req.body?.url;
+  const manualUrls: unknown = req.body?.urls;
+
   if (targetUrl) {
     try { new URL(targetUrl); } catch {
       return res.status(400).json({ error: 'Invalid URL' });
+    }
+  }
+
+  // ── Manual URL list ──────────────────────────────────────────────────────
+  // When the caller supplies an explicit list of URLs, write them straight to
+  // crawled-urls/urls.csv so the audit runner picks them up.  The existing
+  // "hasCrawl" check in runAudit() will then skip the crawl step entirely.
+  let effectiveTargetUrl = targetUrl;
+
+  if (Array.isArray(manualUrls) && manualUrls.length > 0) {
+    const validUrls: string[] = (manualUrls as unknown[])
+      .map(u => String(u).trim())
+      .filter(u => { try { new URL(u); return true; } catch { return false; } });
+
+    if (validUrls.length === 0) {
+      return res.status(400).json({ error: 'No valid URLs in the provided list' });
+    }
+
+    effectiveTargetUrl = targetUrl ?? validUrls[0];
+    const outputDir = resultsDirFor(effectiveTargetUrl);
+    const csvDir = path.join(outputDir, 'crawled-urls');
+
+    try {
+      fs.mkdirSync(csvDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(csvDir, 'urls.csv'),
+        validUrls.map(u => `"${u}"`).join('\n') + '\n',
+        'utf-8',
+      );
+    } catch (err) {
+      return res.status(500).json({ error: 'Failed to write URL list to disk' });
     }
   }
 
@@ -270,7 +303,7 @@ app.post('/api/audit/start', (req: Request, res: Response) => {
   state.startedAt    = new Date().toISOString();
   state.completedAt  = null;
   state.lastError    = null;
-  state.targetUrl    = targetUrl ?? null;
+  state.targetUrl    = effectiveTargetUrl ?? null;
   state.auditId      = auditId;
   state.reportId     = null;
   state.pagesAudited = 0;
@@ -280,7 +313,7 @@ app.post('/api/audit/start', (req: Request, res: Response) => {
 
   res.json({ started: true, auditId });
 
-  runAudit(targetUrl);
+  runAudit(effectiveTargetUrl);
 });
 
 // Force-stop a running audit and reset state to idle

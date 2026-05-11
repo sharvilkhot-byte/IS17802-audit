@@ -111,6 +111,27 @@ nav {
 }
 .hero-desc strong{color:var(--text);font-weight:600}
 
+/* ─── MODE TOGGLE ────────────────────────────────────────────────────────── */
+.mode-toggle{
+  display:flex;gap:3px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:10px;padding:3px;
+  width:fit-content;margin:0 auto 18px;
+}
+.mode-btn{
+  padding:7px 18px;border-radius:7px;
+  font-size:13px;font-weight:500;color:var(--text-3);
+  background:transparent;border:none;cursor:pointer;
+  transition:all .15s;display:flex;align-items:center;gap:6px;
+}
+.mode-btn svg{width:14px;height:14px}
+.mode-btn.active{
+  background:var(--surface);color:var(--text);
+  box-shadow:0 1px 4px rgba(0,0,0,.08);font-weight:600;
+}
+.mode-btn:hover:not(.active){color:var(--text-2)}
+.mode-btn:disabled{opacity:.5;cursor:not-allowed}
+
 /* ─── URL INPUT ──────────────────────────────────────────────────────────── */
 .input-wrap{max-width:660px;margin:0 auto}
 .input-card{
@@ -162,6 +183,43 @@ nav {
   transition:all .15s;
 }
 .quick-link:hover{border-color:var(--border2);color:var(--text-2)}
+
+/* ─── MANUAL URL TEXTAREA ────────────────────────────────────────────────── */
+.textarea-card{
+  background:var(--surface);
+  border:1px solid var(--border2);
+  border-radius:16px;overflow:hidden;
+  box-shadow:var(--shadow);
+  transition:border-color .2s,box-shadow .2s;
+}
+.textarea-card:focus-within{
+  border-color:rgba(37,99,235,.45);
+  box-shadow:var(--shadow),0 0 0 3px rgba(37,99,235,.1);
+}
+.textarea-card textarea{
+  width:100%;height:170px;padding:16px 20px;
+  font-family:'SF Mono','Fira Code','Cascadia Code',Consolas,monospace;
+  font-size:12.5px;line-height:1.75;color:var(--text);
+  background:transparent;border:none;outline:none;resize:none;
+  caret-color:var(--accent);
+}
+.textarea-card textarea::placeholder{color:var(--text-3);font-family:inherit}
+.textarea-card textarea:disabled{color:var(--text-3)}
+.textarea-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 10px 10px 20px;
+  border-top:1px solid var(--border);background:var(--surface2);
+}
+.url-count{
+  font-size:12px;font-weight:600;color:var(--text-3);
+  display:flex;align-items:center;gap:6px;
+}
+.url-count.has-urls{color:var(--accent)}
+.url-count-num{
+  background:var(--accent-bg);border:1px solid rgba(37,99,235,.2);
+  color:var(--accent);border-radius:20px;padding:1px 8px;font-size:11px;
+}
+.url-count.has-urls .url-count-num{display:inline}
 
 /* ─── MAIN ───────────────────────────────────────────────────────────────── */
 .main{max-width:860px;margin:0 auto;padding:40px 24px 80px}
@@ -382,26 +440,67 @@ footer{
   </p>
 
   <div class="input-wrap">
-    <div class="input-card" id="input-card">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-      </svg>
-      <input id="url-input" type="url" placeholder="https://your-website.com" autocomplete="off" spellcheck="false"/>
-      <button class="btn-audit" id="btn-run">
-        <span id="btn-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </span>
-        <span id="btn-label">Start Audit</span>
+
+    <!-- ── Mode toggle ───────────────────────────────────────────────────── -->
+    <div class="mode-toggle" role="group" aria-label="Audit input mode">
+      <button class="mode-btn active" id="mode-btn-crawl" onclick="setMode('crawl')" aria-pressed="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Auto-Crawl
+      </button>
+      <button class="mode-btn" id="mode-btn-manual" onclick="setMode('manual')" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Manual URLs
       </button>
     </div>
-    <div class="input-row-below">
-      <span class="input-hint">Enter any website URL to audit · or pick a quick example</span>
-      <div class="quick-links">
-        <span class="quick-link" onclick="setUrl('https://www.hdfcbank.com')">hdfcbank.com</span>
-        <span class="quick-link" onclick="setUrl('https://www.iciciprulife.com')">iciciprulife.com</span>
-        <span class="quick-link" onclick="setUrl('https://www.sbi.co.in')">sbi.co.in</span>
+
+    <!-- ── Auto-Crawl panel ──────────────────────────────────────────────── -->
+    <div id="panel-crawl">
+      <div class="input-card" id="input-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input id="url-input" type="url" placeholder="https://your-website.com" autocomplete="off" spellcheck="false"/>
+        <button class="btn-audit" id="btn-run-crawl">
+          <span class="btn-icon-inner">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+          <span class="btn-label-inner">Start Audit</span>
+        </button>
+      </div>
+      <div class="input-row-below">
+        <span class="input-hint">Enter a starting URL · the crawler will discover all pages automatically</span>
+        <div class="quick-links">
+          <span class="quick-link" onclick="setUrl('https://www.hdfcbank.com')">hdfcbank.com</span>
+          <span class="quick-link" onclick="setUrl('https://www.iciciprulife.com')">iciciprulife.com</span>
+          <span class="quick-link" onclick="setUrl('https://www.sbi.co.in')">sbi.co.in</span>
+        </div>
       </div>
     </div>
+
+    <!-- ── Manual URLs panel ─────────────────────────────────────────────── -->
+    <div id="panel-manual" style="display:none">
+      <div class="textarea-card">
+        <textarea id="urls-textarea"
+          placeholder="Paste URLs here, one per line:&#10;https://example.com/&#10;https://example.com/about&#10;https://example.com/contact&#10;https://example.com/faq"
+          spellcheck="false"
+          oninput="updateUrlCount()"></textarea>
+        <div class="textarea-footer">
+          <div class="url-count" id="url-count-display">
+            <span>No URLs yet</span>
+          </div>
+          <button class="btn-audit" id="btn-run-manual" disabled>
+            <span class="btn-icon-inner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </span>
+            <span class="btn-label-inner">Start Audit</span>
+          </button>
+        </div>
+      </div>
+      <div class="input-row-below">
+        <span class="input-hint">One URL per line · Duplicates, fragments, and external links are filtered automatically</span>
+      </div>
+    </div>
+
   </div>
 </header>
 
@@ -564,12 +663,61 @@ const PHASE_LABEL = {
   error:     'Audit encountered an error',
 };
 
-let isRunning=false;
+let isRunning = false;
+let currentMode = 'crawl'; // 'crawl' | 'manual'
 const q = s => document.querySelector(s);
 const fmt = n => Number(n||0).toLocaleString();
 
 function setUrl(u){ const i=document.getElementById('url-input'); i.value=u; i.focus(); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ── Mode toggle ───────────────────────────────────────────────────────────────
+function setMode(mode) {
+  if (isRunning) return;
+  currentMode = mode;
+  const isCrawl = mode === 'crawl';
+  document.getElementById('panel-crawl').style.display  = isCrawl ? '' : 'none';
+  document.getElementById('panel-manual').style.display = isCrawl ? 'none' : '';
+  document.getElementById('mode-btn-crawl').classList.toggle('active', isCrawl);
+  document.getElementById('mode-btn-manual').classList.toggle('active', !isCrawl);
+  document.getElementById('mode-btn-crawl').setAttribute('aria-pressed', isCrawl);
+  document.getElementById('mode-btn-manual').setAttribute('aria-pressed', !isCrawl);
+  if (!isCrawl) updateUrlCount();
+}
+
+// ── Parse and deduplicate URLs from the textarea ──────────────────────────────
+function parseUrls(raw) {
+  const seen = new Set();
+  const urls = [];
+  for (const line of raw.split('\n')) {
+    const u = line.trim().replace(/^"|"$/g, '');
+    if (!u || !u.startsWith('http')) continue;
+    try {
+      const p = new URL(u);
+      // Drop pure-fragment URLs
+      if (!p.pathname || (p.pathname === '/' && !p.search && p.hash)) continue;
+      const norm = p.href.replace(/#.*$/, ''); // strip fragment
+      if (!seen.has(norm)) { seen.add(norm); urls.push(norm); }
+    } catch { /* skip invalid */ }
+  }
+  return urls;
+}
+
+function updateUrlCount() {
+  const raw = document.getElementById('urls-textarea').value;
+  const urls = parseUrls(raw);
+  const display = document.getElementById('url-count-display');
+  const runBtn  = document.getElementById('btn-run-manual');
+  if (urls.length === 0) {
+    display.className = 'url-count';
+    display.innerHTML = '<span>No URLs yet</span>';
+    runBtn.disabled = true;
+  } else {
+    display.className = 'url-count has-urls';
+    display.innerHTML = `<span>${urls.length} URL${urls.length!==1?'s':''} ready</span><span class="url-count-num">${urls.length}</span>`;
+    runBtn.disabled = isRunning;
+  }
+}
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 function setNavStatus(phase){
@@ -633,17 +781,29 @@ function appendLog(text, cls){
 
 // ── Button ────────────────────────────────────────────────────────────────────
 function setButton(running){
-  const btn = document.getElementById('btn-run');
-  const inp = document.getElementById('url-input');
-  btn.disabled = running;
-  inp.disabled = running;
-  const iconEl = document.getElementById('btn-icon');
-  if(running){
-    iconEl.innerHTML = '<div class="spinner"></div>';
-  } else {
-    iconEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-  }
-  document.getElementById('btn-label').textContent = running ? 'Running…' : 'Start Audit';
+  const spinnerHtml = '<div class="spinner"></div>';
+  const playHtml = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+
+  ['btn-run-crawl', 'btn-run-manual'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    // btn-run-manual has its own disabled state (requires URLs) — don't force-enable it
+    if (id === 'btn-run-manual' && !running) {
+      updateUrlCount(); // re-evaluate based on textarea content
+    } else {
+      btn.disabled = running;
+    }
+    const iconEl = btn.querySelector('.btn-icon-inner');
+    const labelEl = btn.querySelector('.btn-label-inner');
+    if (iconEl) iconEl.innerHTML = running ? spinnerHtml : playHtml;
+    if (labelEl) labelEl.textContent = running ? 'Running…' : 'Start Audit';
+  });
+
+  document.getElementById('url-input').disabled = running;
+  document.getElementById('urls-textarea').disabled = running;
+  document.getElementById('mode-btn-crawl').disabled = running;
+  document.getElementById('mode-btn-manual').disabled = running;
+
   const stopBtn = document.getElementById('btn-stop');
   if(stopBtn) stopBtn.style.display = running ? '' : 'none';
 }
@@ -796,37 +956,59 @@ function stopPolling(){
 }
 
 // ── Run audit ─────────────────────────────────────────────────────────────────
-document.getElementById('btn-run').addEventListener('click', ()=>{
-  if(isRunning) return;
-  const val = document.getElementById('url-input').value.trim();
+function startAudit() {
+  if (isRunning) return;
+
   const body = {};
-  if(val){
-    try{ new URL(val); body.url=val; }
-    catch{
+  let displayUrl = 'the target site';
+
+  if (currentMode === 'crawl') {
+    const val = document.getElementById('url-input').value.trim();
+    if (val) {
+      try { new URL(val); body.url = val; displayUrl = val; }
+      catch {
+        showProgress(true);
+        document.getElementById('log-wrap').innerHTML = '';
+        appendLog('Invalid URL — please enter a full URL including https://, e.g. https://example.com', 'error');
+        return;
+      }
+    }
+  } else {
+    // Manual URLs mode
+    const raw = document.getElementById('urls-textarea').value;
+    const urls = parseUrls(raw);
+    if (urls.length === 0) {
       showProgress(true);
-      document.getElementById('log-wrap').innerHTML='';
-      appendLog('Invalid URL — please enter a full URL including https://, e.g. https://example.com','error');
+      document.getElementById('log-wrap').innerHTML = '';
+      appendLog('No valid URLs found — paste at least one URL starting with https://', 'error');
       return;
     }
+    body.urls = urls;
+    body.url  = urls[0]; // primary URL for output dir + display
+    displayUrl = (() => { try { return new URL(urls[0]).hostname; } catch { return urls[0]; } })();
+    displayUrl += ` (${urls.length} URL${urls.length !== 1 ? 's' : ''})`;
   }
-  document.getElementById('log-wrap').innerHTML='';
+
+  document.getElementById('log-wrap').innerHTML = '';
   lastLogCount = 0; lastPhase = null;
   showProgress(true);
-  setProgressTitle(body.url||'', new Date().toISOString());
-  appendLog('Initialising audit for '+(body.url||'the target site')+'…','phase');
+  setProgressTitle(body.url || '', new Date().toISOString());
+  appendLog('Initialising audit for ' + displayUrl + '…', 'phase');
   setButton(true); setProgress('crawling'); setStep('crawling'); setBadge('running');
-  isRunning=true;
+  isRunning = true;
 
-  fetch('/api/audit/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-    .then(r=>r.json())
-    .then(d=>{
-      if(d.error){ appendLog(d.error,'error'); setButton(false); isRunning=false; setBadge('error'); return; }
-      // Navigate to unique audit URL so progress page is shareable
-      if(d.auditId) window.history.replaceState(null,'',`/audit/${d.auditId}`);
+  fetch('/api/audit/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { appendLog(d.error, 'error'); setButton(false); isRunning = false; setBadge('error'); return; }
+      if (d.auditId) window.history.replaceState(null, '', `/audit/${d.auditId}`);
       startPolling();
     })
-    .catch(e=>{ appendLog('Connection error: '+e.message,'error'); setButton(false); isRunning=false; });
-});
+    .catch(e => { appendLog('Connection error: ' + e.message, 'error'); setButton(false); isRunning = false; });
+}
+
+document.getElementById('btn-run-crawl').addEventListener('click', startAudit);
+document.getElementById('btn-run-manual').addEventListener('click', startAudit);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 fetch('/api/status').then(r=>r.json()).then(d=>{
