@@ -562,14 +562,15 @@ function buildCoveragePanel(cov: CoverageSummary): string {
 }
 
 export function generateHTMLReport(report: AuditReport, outputDir: string, violationsUrl = '/audit-results/violations.json'): string {
-  // Write slim violations to a separate JSON file served at violationsUrl.
-  // The HTML report loads them lazily via fetch — violations are NOT embedded
-  // in the HTML string, which previously caused 50-200 MB string construction hangs.
   const allViolations = report.pages.flatMap(p => p.violations);
   const slim = { violations: allViolations.map(slimViolation) };
+
+  // Write violations.json for server-based usage
   fs.writeFileSync(path.join(outputDir, 'violations.json'), JSON.stringify(slim), 'utf-8');
 
-  const html = buildHTML(report, violationsUrl);
+  // Embed violations inline so the report works when opened as a local file (file://)
+  // without needing a web server (avoids CORS fetch failures).
+  const html = buildHTML(report, violationsUrl, slim);
   const outputPath = path.join(outputDir, 'accessibility-report.html');
   fs.writeFileSync(outputPath, html, 'utf-8');
   return outputPath;
@@ -617,7 +618,7 @@ function slimViolation(v: AuditViolation) {
   };
 }
 
-function buildHTML(report: AuditReport, violationsUrl: string): string {
+function buildHTML(report: AuditReport, violationsUrl: string, inlineData?: { violations: ReturnType<typeof slimViolation>[] }): string {
   const { critical, serious, moderate, minor } = report.summary;
   const total = report.summary.totalViolations;
   const allViolations = report.pages.flatMap(p => p.violations);
@@ -1379,7 +1380,7 @@ document.querySelectorAll('#ptbl th').forEach(function(th){
 });
 </script>
 
-<script>var VIOLATIONS_URL="${e(violationsUrl)}";</script>
+<script>var VIOLATIONS_URL="${e(violationsUrl)}";var VIOLATIONS_DATA=${inlineData ? safeJson(inlineData) : 'null'};</script>
 <script>
 /* ── 3. VIOLATIONS TAB — data loaded lazily from VIOLATIONS_URL ── */
 var PAGE_SIZE = 50;
@@ -1428,6 +1429,15 @@ function initViolations(){
   initialized=true; // prevent double-fetch on rapid tab clicks
   var vlist=document.getElementById('vlist');
   if(vlist) vlist.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8;font-size:13px">Loading violations…</div>';
+
+  // Use inline data when available (file:// mode — no fetch needed)
+  if(window.VIOLATIONS_DATA){
+    var d=window.VIOLATIONS_DATA;
+    allData=(d.violations||[]).map(function(v,i){ v._i=i; v._sk=(v.desc+' '+v.clause+' '+v.title+' '+v.page+' '+v.help).toLowerCase(); return v; });
+    applyFilters();
+    return;
+  }
+
   fetch(window.VIOLATIONS_URL||'/audit-results/violations.json')
     .then(function(r){
       if(!r.ok) throw new Error('HTTP '+r.status);

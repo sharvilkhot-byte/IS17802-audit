@@ -44,9 +44,9 @@ export interface PageConfig {
 }
 
 export interface PageAction {
-  type: 'click' | 'fill' | 'wait' | 'hover' | 'press';
+  type: 'click' | 'fill' | 'wait' | 'hover' | 'press' | 'evaluate';
   selector?: string;
-  value?: string;
+  value?: string;   // JS expression string when type === 'evaluate'
   ms?: number;
 }
 

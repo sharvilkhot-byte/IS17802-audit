@@ -479,6 +479,9 @@ async function performAction(page: Page, action: { type: string; selector?: stri
       case 'press':
         if (action.selector && action.value) await page.press(action.selector, action.value);
         break;
+      case 'evaluate':
+        if (action.value) await page.evaluate(action.value);
+        break;
     }
   } catch {
     // Action failed — continue audit

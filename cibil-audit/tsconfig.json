@@ -10,6 +10,6 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "crawl-urls.ts", "regen-html.ts"],
+  "include": ["src/**/*", "crawl-urls.ts", "regen-html.ts", "run-doc-upload-audit.ts", "run-combined-audit.ts", "merge-reports.ts", "rerun-login.ts", "run-missing-states.ts"],
   "exclude": ["node_modules", "dist"]
 }
